@@ -13,7 +13,14 @@ This file provides guidance to Voyah Code (claude.ai/code) when working with cod
 
 ## Running
 
-Open `index.html` directly in any modern browser. No server required.
+- **train_server.py** (Flask 后端): Start with `python train_server.py`, serves LightGBM_damo.html with training API and model export
+- **LightGBM_damo.html**: Works in two modes:
+  - 联网模式：训练完成后可下载独立版 HTML（含内嵌模型 JSON）
+  - 离线模式：独立版打开即用，纯 JS 预测引擎不依赖网络
+
+### LightGBM 离线预测
+
+train_server.py exports model via `/api/model` (JSON with tree structure) and `/api/standalone-html` (full self-contained HTML). The JS predictor `LGBPredictor` (index.html ~line 200) traverses LightGBM tree JSON using the same split/leaf logic as the Python booster. Binary classification uses sigmoid, multiclass uses softmax over GBDT leaf values.
 
 ## Code Architecture
 
