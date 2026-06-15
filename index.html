@@ -1,0 +1,2491 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>零部件包装测算系统</title>
+<style>
+/* ── Reset & Base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --primary: #0052d9;
+  --primary-light: #e8f0fe;
+  --success: #2ba471;
+  --warning: #e37318;
+  --danger: #d54941;
+  --gray-1: #1c2435;
+  --gray-2: #4f5d73;
+  --gray-3: #8a94a6;
+  --gray-4: #c0c6d1;
+  --gray-5: #e8ecf0;
+  --gray-6: #f3f5f7;
+  --radius: 8px;
+  --shadow: 0 2px 8px rgba(0,0,0,.08);
+}
+html { font-size: 14px; }
+body {
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: var(--gray-1);
+  background: var(--gray-6);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* ── Layout ── */
+.app-header {
+  background: #fff;
+  border-bottom: 1px solid var(--gray-5);
+  padding: 12px 32px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.app-header h1 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--primary);
+}
+.app-header .subtitle {
+  font-size: 13px;
+  color: var(--gray-3);
+}
+
+/* Step indicator */
+.steps {
+  display: flex;
+  gap: 0;
+  background: #fff;
+  padding: 16px 32px;
+  border-bottom: 1px solid var(--gray-5);
+}
+.step-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  color: var(--gray-3);
+  position: relative;
+  cursor: default;
+  transition: all .2s;
+}
+.step-item.active {
+  background: var(--primary-light);
+  color: var(--primary);
+  font-weight: 600;
+}
+.step-item.done {
+  color: var(--success);
+}
+.step-item .step-num {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--gray-5);
+  color: var(--gray-3);
+  flex-shrink: 0;
+}
+.step-item.active .step-num {
+  background: var(--primary);
+  color: #fff;
+}
+.step-item.done .step-num {
+  background: var(--success);
+  color: #fff;
+}
+.step-arrow {
+  width: 16px;
+  text-align: center;
+  color: var(--gray-4);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+/* Main content */
+.main {
+  max-width: 1100px;
+  margin: 24px auto;
+  padding: 0 24px;
+}
+.card {
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 24px 28px;
+  margin-bottom: 20px;
+}
+.card-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card-title .icon {
+  font-size: 18px;
+}
+
+/* ── Form ── */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.form-group label {
+  font-size: 13px;
+  color: var(--gray-2);
+  font-weight: 500;
+}
+.form-group label .required {
+  color: var(--danger);
+  margin-left: 2px;
+}
+.form-group input,
+.form-group select,
+.form-group textarea {
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--gray-4);
+  border-radius: 4px;
+  font-size: 14px;
+  color: var(--gray-1);
+  transition: border-color .2s;
+  outline: none;
+  background: #fff;
+}
+.form-group textarea {
+  height: 80px;
+  padding: 8px 12px;
+  resize: vertical;
+}
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(0,82,217,.12);
+}
+.form-group input::placeholder {
+  color: var(--gray-4);
+}
+.form-group .unit {
+  font-size: 12px;
+  color: var(--gray-3);
+}
+.form-group input[readonly] {
+  background: var(--gray-6);
+}
+
+/* Image upload */
+.img-upload {
+  border: 2px dashed var(--gray-4);
+  border-radius: var(--radius);
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all .2s;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--gray-3);
+  position: relative;
+  overflow: hidden;
+}
+.img-upload:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.img-upload input[type="file"] {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.img-upload .upload-icon {
+  font-size: 28px;
+}
+.img-upload .upload-text {
+  font-size: 13px;
+}
+.img-preview {
+  max-width: 100%;
+  max-height: 180px;
+  border-radius: 4px;
+  object-fit: contain;
+}
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 20px;
+  height: 36px;
+  border: 1px solid var(--gray-4);
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all .2s;
+  background: #fff;
+  color: var(--gray-1);
+  user-select: none;
+}
+.btn:hover {
+  border-color: var(--gray-3);
+}
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.btn-primary:hover {
+  background: #0041b3;
+}
+.btn-success {
+  background: var(--success);
+  color: #fff;
+  border-color: var(--success);
+}
+.btn-success:hover {
+  background: #238c5e;
+}
+.btn-danger {
+  background: #fff;
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.btn-danger:hover {
+  background: #fef0ef;
+}
+.btn-lg {
+  height: 42px;
+  padding: 0 32px;
+  font-size: 15px;
+}
+.btn-group {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+  justify-content: flex-end;
+}
+
+/* ── Package method card ── */
+.pkg-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+.pkg-option {
+  border: 2px solid var(--gray-5);
+  border-radius: var(--radius);
+  padding: 16px;
+  cursor: pointer;
+  transition: all .2s;
+  position: relative;
+}
+.pkg-option:hover {
+  border-color: var(--primary-light);
+}
+.pkg-option.selected {
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+.pkg-option .check-mark {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+.pkg-option.selected .check-mark {
+  display: flex;
+}
+.pkg-option .opt-title {
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+.pkg-option .opt-desc {
+  font-size: 13px;
+  color: var(--gray-2);
+  line-height: 1.8;
+}
+
+/* ── Package scheme table ── */
+.scheme-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-size: 13px;
+}
+.scheme-table th {
+  background: var(--gray-6);
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--gray-2);
+  border-bottom: 1px solid var(--gray-5);
+}
+.scheme-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--gray-5);
+  color: var(--gray-1);
+}
+.scheme-table tr:hover td {
+  background: var(--gray-6);
+}
+
+/* ── Cost summary ── */
+.cost-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+.cost-item {
+  background: var(--gray-6);
+  border-radius: var(--radius);
+  padding: 16px;
+  text-align: center;
+}
+.cost-item .cost-label {
+  font-size: 13px;
+  color: var(--gray-3);
+  margin-bottom: 6px;
+}
+.cost-item .cost-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--primary);
+}
+.cost-item .cost-unit {
+  font-size: 13px;
+  color: var(--gray-3);
+  margin-top: 4px;
+}
+.cost-item.highlight {
+  background: var(--primary-light);
+}
+.cost-item.highlight .cost-value {
+  color: var(--primary);
+}
+
+/* ── Container spec card ── */
+.container-specs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}
+.container-chip {
+  padding: 8px 16px;
+  border: 1px solid var(--gray-4);
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all .2s;
+  user-select: none;
+}
+.container-chip:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.container-chip.selected {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+/* ── Section hidden ── */
+.section-panel {
+  display: none;
+}
+.section-panel.active {
+  display: block;
+}
+
+/* ── Badge ── */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.badge-blue { background: var(--primary-light); color: var(--primary); }
+.badge-green { background: #e8f8ef; color: var(--success); }
+.badge-orange { background: #fef3e8; color: var(--warning); }
+
+/* ── Alert ── */
+.alert {
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.alert-info {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+.alert-warning {
+  background: #fef3e8;
+  color: var(--warning);
+}
+.alert-success {
+  background: #e8f8ef;
+  color: var(--success);
+}
+
+/* ── Visual layout diagram ── */
+.layout-diagram {
+  background: var(--gray-6);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-top: 16px;
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.layout-diagram canvas {
+  border: 1px solid var(--gray-4);
+  border-radius: 4px;
+  background: #fff;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .form-grid { grid-template-columns: 1fr; }
+  .pkg-options { grid-template-columns: 1fr; }
+  .steps { padding: 12px 16px; overflow-x: auto; }
+  .step-item { padding: 6px 12px; font-size: 13px; white-space: nowrap; }
+  .main { padding: 0 12px; }
+  .cost-summary { grid-template-columns: 1fr 1fr; }
+}
+
+/* ── Project List ── */
+.project-list-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px;
+  height: 32px;
+  border: 1px solid var(--primary);
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  background: var(--primary-light);
+  color: var(--primary);
+  transition: all .2s;
+}
+.project-list-btn:hover {
+  background: var(--primary);
+  color: #fff;
+}
+
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.modal-overlay.open {
+  display: flex;
+}
+.modal-box {
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: 0 8px 32px rgba(0,0,0,.18);
+  width: 100%;
+  max-width: 900px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+.modal-header {
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--gray-5);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.modal-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.modal-close {
+  width: 32px; height: 32px;
+  border: none; background: none;
+  cursor: pointer; font-size: 20px;
+  color: var(--gray-3);
+  border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-close:hover { background: var(--gray-6); color: var(--gray-1); }
+.modal-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+.modal-footer {
+  padding: 14px 24px;
+  border-top: 1px solid var(--gray-5);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.project-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.project-table th {
+  background: var(--gray-6);
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--gray-2);
+  border-bottom: 1px solid var(--gray-5);
+  white-space: nowrap;
+}
+.project-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--gray-5);
+  color: var(--gray-1);
+}
+.project-table tr:hover td {
+  background: var(--gray-6);
+}
+.project-table .col-actions {
+  width: 80px;
+  text-align: center;
+}
+.project-table .empty-row td {
+  text-align: center;
+  color: var(--gray-3);
+  padding: 32px;
+}
+
+.project-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.project-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.project-detail-item .label {
+  font-size: 12px;
+  color: var(--gray-3);
+}
+.project-detail-item .value {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--gray-1);
+}
+
+/* ── Multi-select ── */
+.multi-select {
+  position: relative;
+  width: 100%;
+}
+.multi-select-trigger {
+  height: 36px;
+  padding: 6px 12px;
+  border: 1px solid var(--gray-4);
+  border-radius: 4px;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  min-height: 36px;
+  flex-wrap: wrap;
+  transition: border-color .2s;
+}
+.multi-select-trigger:hover { border-color: var(--gray-3); }
+.multi-select.open .multi-select-trigger { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(0,82,217,.12); }
+.multi-select-placeholder { font-size: 14px; color: var(--gray-4); }
+.multi-select-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.multi-select-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 8px; border-radius: 10px;
+  font-size: 12px; background: var(--primary-light); color: var(--primary);
+}
+.multi-select-tag .remove-tag {
+  cursor: pointer; font-size: 14px; line-height: 1; color: var(--primary);
+}
+.multi-select-arrow { margin-left: auto; font-size: 10px; color: var(--gray-3); flex-shrink: 0; }
+.multi-select-dropdown {
+  display: none;
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+  background: #fff; border: 1px solid var(--gray-4); border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.12); z-index: 200;
+  padding: 6px 0; max-height: 200px; overflow-y: auto;
+}
+.multi-select.open .multi-select-dropdown { display: block; }
+.multi-select-dropdown label {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px; cursor: pointer; font-size: 14px;
+  color: var(--gray-1); transition: background .15s;
+}
+.multi-select-dropdown label:hover { background: var(--gray-6); }
+.multi-select-dropdown input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--primary); cursor: pointer; }
+
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="app-header">
+  <h1>零部件包装测算系统</h1>
+  <span class="subtitle">AI 赋能包装评估 — 提升准确率，降低成本</span>
+  <button class="project-list-btn" onclick="openProjectList()">📋 历史项目列表</button>
+</header>
+
+<!-- Step Indicator -->
+<nav class="steps" id="stepNav">
+  <div class="step-item active" data-step="1">
+    <span class="step-num">1</span>
+    <span>零部件信息录入</span>
+  </div>
+  <span class="step-arrow">›</span>
+  <div class="step-item" data-step="2">
+    <span class="step-num">2</span>
+    <span>确认包装方式</span>
+  </div>
+  <span class="step-arrow">›</span>
+  <div class="step-item" data-step="3">
+    <span class="step-num">3</span>
+    <span>确认包装方案</span>
+  </div>
+  <span class="step-arrow">›</span>
+  <div class="step-item" data-step="4">
+    <span class="step-num">4</span>
+    <span>包装成本测算</span>
+  </div>
+</nav>
+
+<main class="main">
+
+  <!-- ===================== Step 1: Input ===================== -->
+  <div class="section-panel active" id="step1">
+
+    <div class="card">
+      <div class="card-title"><span class="icon">📦</span> 零部件基础信息</div>
+      <div class="alert alert-info">
+        <span>请录入零部件的基本参数，系统将基于这些信息推荐最优包装方式。</span>
+      </div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>零件号 <span class="required">*</span></label>
+          <input type="text" id="partNo" placeholder="例如 5401234-A01" />
+        </div>
+        <div class="form-group">
+          <label>零件名称</label>
+          <input type="text" id="partName" placeholder="例如 前保险杠本体" />
+        </div>
+        <div class="form-group">
+          <label>零件分类</label>
+          <select id="partCategory">
+            <option value="A">A类 — 极其重要大件（涂装/总装）</option>
+            <option value="B" selected>B类 — 来料供应商件</option>
+            <option value="C">C类 — 标准件</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>长 (mm) <span class="required">*</span></label>
+          <input type="number" id="partL" placeholder="长度" min="1" />
+        </div>
+        <div class="form-group">
+          <label>宽 (mm) <span class="required">*</span></label>
+          <input type="number" id="partW" placeholder="宽度" min="1" />
+        </div>
+        <div class="form-group">
+          <label>高 (mm) <span class="required">*</span></label>
+          <input type="number" id="partH" placeholder="高度" min="1" />
+        </div>
+        <div class="form-group">
+          <label>重量 (kg)</label>
+          <input type="number" id="partWeight" placeholder="单件重量" min="0" step="0.01" />
+        </div>
+        <div class="form-group">
+          <label>单件最大承重 (kg)</label>
+          <input type="number" id="partMaxLoad" placeholder="单箱最大承载重量" min="0" step="0.1" />
+        </div>
+        <div class="form-group">
+          <label>零件装载特性</label>
+          <div class="multi-select" id="loadCharsSelect">
+            <div class="multi-select-trigger" onclick="toggleLoadChars()">
+              <span class="multi-select-placeholder" id="loadCharsPlaceholder">请选择（可多选）</span>
+              <div class="multi-select-tags" id="loadCharsTags"></div>
+              <span class="multi-select-arrow">▼</span>
+            </div>
+            <div class="multi-select-dropdown">
+              <label><input type="checkbox" value="易碎" onchange="updateLoadChars()" /> 易碎</label>
+              <label><input type="checkbox" value="不可倒置" onchange="updateLoadChars()" /> 不可倒置</label>
+              <label><input type="checkbox" value="防静电" onchange="updateLoadChars()" /> 防静电</label>
+              <label><input type="checkbox" value="防潮" onchange="updateLoadChars()" /> 防潮</label>
+              <label><input type="checkbox" value="耐高温" onchange="updateLoadChars()" /> 耐高温</label>
+              <label><input type="checkbox" value="怕磕碰" onchange="updateLoadChars()" /> 怕磕碰</label>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>零件数量</label>
+          <input type="number" id="partQty" placeholder="本次采购/生产的件数" min="1" />
+        </div>
+        <div class="form-group">
+          <label>经济批次量</label>
+          <input type="number" id="batchQty" placeholder="默认48" value="48" min="1" />
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="icon">📷</span> 零部件图片</div>
+      <div class="img-upload" id="imgUpload">
+        <input type="file" accept="image/*" id="imgFile" />
+        <span class="upload-icon">📁</span>
+        <span class="upload-text">点击或拖拽上传零部件图片</span>
+      </div>
+      <div id="imgPreviewWrap" style="display:none; margin-top:12px;">
+        <img id="imgPreview" class="img-preview" alt="零部件图片" />
+        <button class="btn btn-danger" style="margin-top:8px" onclick="removeImage()">移除图片</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="icon">🚢</span> 集装箱规格</div>
+      <div class="container-specs" id="containerSpecs">
+        <div class="container-chip selected" data-type="20gp" onclick="selectContainer(this)">
+          20'GP（5.9×2.35×2.39m）
+        </div>
+        <div class="container-chip" data-type="40gp" onclick="selectContainer(this)">
+          40'GP（12.03×2.35×2.39m）
+        </div>
+        <div class="container-chip" data-type="40hc" onclick="selectContainer(this)">
+          40'HC（12.03×2.35×2.69m）
+        </div>
+      </div>
+      <div class="form-grid" style="margin-top:16px" id="containerSizeInputs">
+        <div class="form-group">
+          <label>箱内长 (mm)</label>
+          <input type="number" id="ctnL" value="5900" readonly />
+        </div>
+        <div class="form-group">
+          <label>箱内宽 (mm)</label>
+          <input type="number" id="ctnW" value="2350" readonly />
+        </div>
+        <div class="form-group">
+          <label>箱内高 (mm)</label>
+          <input type="number" id="ctnH" value="2390" readonly />
+        </div>
+        <div class="form-group">
+          <label>最大载重 (kg)</label>
+          <input type="number" id="ctnMaxW" value="22100" readonly />
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="icon">⚙️</span> 附加参数</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>单件包装缓冲厚度 (mm)</label>
+          <input type="number" id="bufferThickness" value="30" min="0" />
+        </div>
+        <div class="form-group">
+          <label>形变公差 (mm)</label>
+          <input type="number" id="deformationTol" value="5" min="0" />
+        </div>
+        <div class="form-group">
+          <label>包装材料</label>
+          <select id="pkgMaterial">
+            <option value="wood">木箱</option>
+            <option value="carton">纸箱</option>
+            <option value="iron">铁箱</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>是否需防锈处理</label>
+          <select id="antiRust">
+            <option value="no">否</option>
+            <option value="yes">是</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>操作人员</label>
+          <input type="text" id="operator" placeholder="记录本次操作人员姓名" />
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn btn-primary btn-lg" onclick="goStep2()">下一步：推荐包装方式 ›</button>
+    </div>
+  </div>
+
+  <!-- ===================== Step 2: Package Method ===================== -->
+  <div class="section-panel" id="step2">
+    <div class="card">
+      <div class="card-title"><span class="icon">🧠</span> AI 推荐包装方式</div>
+      <div class="alert alert-info">
+        <span>基于零部件参数及集装箱规格，系统推荐以下包装方式，请确认后进入下一步。</span>
+      </div>
+      <div id="partInfoSummary" style="margin-bottom:16px; font-size:13px; color:var(--gray-2);"></div>
+      <div class="pkg-options" id="pkgOptions"></div>
+    </div>
+
+    <div class="card" id="pkgPreviewCard" style="display:none;">
+      <div class="card-title"><span class="icon">📦</span> <span id="pkgPreviewTitle">包装方式预览</span></div>
+      <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;">
+        <div class="layout-diagram" style="flex:0 0 auto;">
+          <canvas id="pkgPreviewCanvas" width="340" height="300"></canvas>
+        </div>
+        <div id="pkgPreviewDesc" style="flex:1;min-width:200px;font-size:13px;line-height:2;color:var(--gray-2);"></div>
+      </div>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn" onclick="goStep(1)">‹ 返回修改</button>
+      <button class="btn btn-primary btn-lg" onclick="goStep3()">确认包装方式，生成方案 ›</button>
+    </div>
+  </div>
+
+  <!-- ===================== Step 3: Package Scheme ===================== -->
+  <div class="section-panel" id="step3">
+    <div class="card">
+      <div class="card-title"><span class="icon">📋</span> 包装方案详情</div>
+      <div class="alert alert-warning">
+        <span>请仔细审核以下包装方案，确认无误后进入成本测算。</span>
+      </div>
+      <table class="scheme-table" id="schemeTable">
+        <thead>
+          <tr>
+            <th>项目</th>
+            <th>数值</th>
+            <th>说明</th>
+          </tr>
+        </thead>
+        <tbody id="schemeBody"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="icon">📐</span> 集装箱装载示意图</div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
+        <span style="font-size:13px;color:var(--gray-2);">当前已装载：</span>
+        <span id="loadedCountLabel" style="font-size:15px;font-weight:700;color:var(--primary);">0 件</span>
+        <span style="font-size:13px;color:var(--gray-3);">/ 方案总容量 <span id="totalCapLabel">—</span> 件</span>
+        <div style="margin-left:16px;display:flex;gap:8px;">
+          <button class="btn" style="height:30px;padding:0 14px;font-size:13px;" onclick="addLoadedParts(1)">+1 件</button>
+          <button class="btn" style="height:30px;padding:0 14px;font-size:13px;" onclick="addLoadedParts(10)">+10 件</button>
+          <button class="btn" style="height:30px;padding:0 14px;font-size:13px;" onclick="resetLoadedParts()">重置</button>
+        </div>
+        <div id="loadingProgress" style="margin-left:auto;font-size:12px;color:var(--gray-3);"></div>
+      </div>
+      <div class="layout-diagram">
+        <canvas id="layoutCanvas" width="700" height="400"></canvas>
+      </div>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn" onclick="goStep(2)">‹ 返回修改包装方式</button>
+      <button class="btn btn-success btn-lg" onclick="goStep4()">确认方案，测算成本 ›</button>
+    </div>
+  </div>
+
+  <!-- ===================== Step 4: Cost Calc ===================== -->
+  <div class="section-panel" id="step4">
+    <div class="card">
+      <div class="card-title"><span class="icon">💰</span> 包装成本测算结果</div>
+      <div class="alert alert-success">
+        <span>方案已确认，以下是包装成本核算详情。</span>
+      </div>
+      <div class="cost-summary" id="costSummary"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="icon">📊</span> 成本明细</div>
+      <table class="scheme-table">
+        <thead>
+          <tr>
+            <th>成本项</th>
+            <th>单价</th>
+            <th>数量/系数</th>
+            <th>金额（元）</th>
+          </tr>
+        </thead>
+        <tbody id="costBody"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="icon">📝</span> 方案摘要</div>
+      <div id="summaryText" style="font-size:13px; line-height:2; color:var(--gray-2);"></div>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn" onclick="goStep(3)">‹ 返回修改方案</button>
+      <button class="btn btn-success" onclick="saveCurrentToProjectList()">💾 保存到项目列表</button>
+      <button class="btn btn-primary btn-lg" onclick="resetAll()">重新测算</button>
+    </div>
+  </div>
+
+</main>
+
+<!-- ===================== Project List Modal ===================== -->
+<div class="modal-overlay" id="projectListModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2>📋 测算项目列表</h2>
+      <button class="modal-close" onclick="closeProjectList()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="alert alert-info" id="projectListEmpty" style="display:none;">
+        <span>暂无历史测算记录，请先完成一次成本测算后保存。</span>
+      </div>
+      <table class="project-table" id="projectTable">
+        <thead>
+          <tr>
+            <th>零件号</th>
+            <th>零件名称</th>
+            <th>零件总数</th>
+            <th>包装方案</th>
+            <th>单件成本</th>
+            <th>装载特性</th>
+            <th>创建时间</th>
+            <th>操作人员</th>
+            <th class="col-actions">操作</th>
+          </tr>
+        </thead>
+        <tbody id="projectTableBody"></tbody>
+      </table>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeProjectList()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== Project Detail Modal ===================== -->
+<div class="modal-overlay" id="projectDetailModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2>📦 项目详情</h2>
+      <button class="modal-close" onclick="closeProjectDetail()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="project-detail-grid" id="projectDetailContent"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger" id="deleteProjectBtn" onclick="deleteCurrentProject()">🗑 删除</button>
+      <button class="btn" onclick="closeProjectDetail()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ────────────────────────────── State ────────────────────────────── */
+const CONTAINER_SPECS = {
+  '20gp': { l: 5900, w: 2350, h: 2390, maxWeight: 22100, label: "20'GP" },
+  '40gp': { l: 12030, w: 2350, h: 2390, maxWeight: 27600, label: "40'GP" },
+  '40hc': { l: 12030, w: 2350, h: 2690, maxWeight: 27600, label: "40'HC" },
+};
+
+// 固定包箱规格（内部尺寸）
+const BOX_SPECS = [
+  { id: 'A', l: 1000, w: 800, h: 500, name: '规格A（1000×800×500mm）' },
+  { id: 'B', l: 800,  w: 600, h: 400, name: '规格B（800×600×400mm）' },
+];
+
+const MATERIAL_PRICES = {
+  wood:   { name: '木箱', pricePerKg: 3.5, surfacePricePerM2: 45, laborCost: 80 },
+  carton: { name: '纸箱', pricePerKg: 2.0, surfacePricePerM2: 18, laborCost: 30 },
+  iron:   { name: '铁箱', pricePerKg: 5.5, surfacePricePerM2: 65, laborCost: 100 },
+};
+
+const state = {
+  step: 1,
+  imageData: null,
+  selectedContainer: '20gp',
+  selectedPkgMethod: null,
+  pkgMethods: [],
+  scheme: null,
+  cost: null,
+  loadedParts: 0,       // 当前已装载零件数
+  layoutPart: null,     // 绘图用的 part 对象
+  layoutMethod: null,   // 绘图用的 method 对象
+};
+
+/* ────────────────────────────── Navigation ────────────────────────────── */
+function goStep(n) {
+  state.step = n;
+  document.querySelectorAll('.section-panel').forEach(el => el.classList.remove('active'));
+  document.getElementById('step' + n).classList.add('active');
+  document.querySelectorAll('.step-item').forEach(el => {
+    const s = +el.dataset.step;
+    el.classList.remove('active', 'done');
+    if (s < n) el.classList.add('done');
+    if (s === n) el.classList.add('active');
+  });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/* ────────────────────────────── Step 1 Logic ────────────────────────────── */
+function selectContainer(el) {
+  document.querySelectorAll('.container-chip').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  state.selectedContainer = el.dataset.type;
+  const spec = CONTAINER_SPECS[state.selectedContainer];
+  document.getElementById('ctnL').value = spec.l;
+  document.getElementById('ctnW').value = spec.w;
+  document.getElementById('ctnH').value = spec.h;
+  document.getElementById('ctnMaxW').value = spec.maxWeight;
+}
+
+// Image upload
+document.getElementById('imgFile').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    state.imageData = ev.target.result;
+    document.getElementById('imgPreview').src = ev.target.result;
+    document.getElementById('imgPreviewWrap').style.display = 'block';
+    document.getElementById('imgUpload').style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+});
+
+function removeImage() {
+  state.imageData = null;
+  document.getElementById('imgFile').value = '';
+  document.getElementById('imgPreviewWrap').style.display = 'none';
+  document.getElementById('imgUpload').style.display = 'flex';
+}
+
+function getPartInput() {
+  const partNo = document.getElementById('partNo').value.trim();
+  const partName = document.getElementById('partName').value.trim();
+  const category = document.getElementById('partCategory').value;
+  const l = parseFloat(document.getElementById('partL').value) || 0;
+  const w = parseFloat(document.getElementById('partW').value) || 0;
+  const h = parseFloat(document.getElementById('partH').value) || 0;
+  const weight = parseFloat(document.getElementById('partWeight').value) || 0;
+  const maxLoad = parseFloat(document.getElementById('partMaxLoad').value) || 0;
+  const loadChars = getLoadCharsValue();
+  const qty = parseInt(document.getElementById('partQty').value) || 0;
+  const batchQty = parseInt(document.getElementById('batchQty').value) || 48;
+  const buffer = parseFloat(document.getElementById('bufferThickness').value) || 30;
+  const tolerance = parseFloat(document.getElementById('deformationTol').value) || 5;
+  const material = document.getElementById('pkgMaterial').value;
+  const antiRust = document.getElementById('antiRust').value === 'yes';
+  const ctnSpec = CONTAINER_SPECS[state.selectedContainer];
+
+  return { partNo, partName, category, l, w, h, weight, maxLoad, loadChars, qty, batchQty, buffer, tolerance, material, antiRust, ctnSpec };
+}
+
+function validatePartInput(p) {
+  if (!p.partNo) return '请输入零件号';
+  if (!p.l || !p.w || !p.h) return '请输入零部件的长、宽、高';
+  return null;
+}
+
+/* ────────────────────────────── Step 2: Package Method Recommendation ────────────────────────────── */
+function computePkgMethods(part) {
+  const methods = [];
+  const ctnL = part.ctnSpec.l;
+  const ctnW = part.ctnSpec.w;
+  const ctnH = part.ctnSpec.h;
+  const ctnMaxWeight = part.ctnSpec.maxWeight;
+  const maxLoad = part.maxLoad || 0;
+  const loadChars = part.loadChars || [];
+  const isFragile = loadChars.includes('易碎');
+
+  // 零件含缓冲的尺寸
+  const pL = part.l + 2 * part.buffer;
+  const pW = part.w + 2 * part.buffer;
+  const pH = part.h + 2 * part.buffer;
+
+  // ── Helper: 计算零件在固定包箱内的SNP（每箱装件数）──
+  function calcSNP(boxL, boxW, boxH) {
+    // 尝试三种摆放方式，取最大SNP
+    const candidates = [];
+
+    // 方式1: 零件平放 (L×W为底面)
+    const nx1 = Math.floor(boxL / pL);
+    const ny1 = Math.floor(boxW / pW);
+    const nz1 = Math.floor(boxH / pH);
+    if (nx1 >= 1 && ny1 >= 1 && nz1 >= 1) {
+      candidates.push({ snp: nx1 * ny1 * nz1, orientation: 'flat' });
+    }
+
+    // 方式2: 零件立放 (L×H为底面)
+    if (!loadChars.includes('不可倒置')) {
+      const nx2 = Math.floor(boxL / pL);
+      const ny2 = Math.floor(boxH / pW);
+      const nz2 = Math.floor(boxW / pH);
+      if (nx2 >= 1 && ny2 >= 1 && nz2 >= 1) {
+        candidates.push({ snp: nx2 * ny2 * nz2, orientation: 'stand' });
+      }
+    }
+
+    // 方式3: 零件侧放 (W×H为底面)
+    const nx3 = Math.floor(boxW / pL);
+    const ny3 = Math.floor(boxH / pW);
+    const nz3 = Math.floor(boxL / pH);
+    if (nx3 >= 1 && ny3 >= 1 && nz3 >= 1) {
+      candidates.push({ snp: nx3 * ny3 * nz3, orientation: 'side' });
+    }
+
+    if (candidates.length === 0) return null;
+    // 返回SNP最大的方式
+    candidates.sort((a, b) => b.snp - a.snp);
+    return candidates[0];
+  }
+
+  // ── Helper: evaluate one box spec ──
+  function evalMethod(cfg) {
+    const { boxId, boxName, boxL, boxW, boxH, material, snp, orientation } = cfg;
+
+    // 固定包箱尺寸即包装尺寸
+    const pkgL = boxL;
+    const pkgW = boxW;
+    const pkgH = boxH;
+
+    // Hard check: box must physically fit inside container
+    if (pkgL > ctnL || pkgW > ctnW || pkgH > ctnH) {
+      return null;
+    }
+
+    // Per-box total weight: parts + package material
+    const pkgMatWeight = estimatePkgWeight(pkgL, pkgW, pkgH, part);
+    const perBoxWeight = part.weight * snp + pkgMatWeight;
+
+    // Hard check: per-box weight cannot exceed part max load (if set)
+    if (maxLoad > 0 && perBoxWeight > maxLoad) {
+      return null;
+    }
+
+    // Hard check: per-box weight cannot exceed container max payload
+    if (perBoxWeight > ctnMaxWeight) {
+      return null;
+    }
+
+    // 易碎件不使用叠放
+    if (isFragile && (orientation === 'stack' || (orientation !== 'flat' && orientation !== 'side' && snp > 1))) {
+      return null;
+    }
+
+    // Volume fit: how many boxes in container
+    const nx = Math.floor(ctnL / pkgL);
+    const ny = Math.floor(ctnW / pkgW);
+    const nz = Math.floor(ctnH / pkgH);
+    const byVolume = nx * ny * nz;
+    const byWeight = perBoxWeight > 0 ? Math.floor(ctnMaxWeight / perBoxWeight) : byVolume;
+    const boxesPerCtn = Math.max(1, Math.min(byVolume, byWeight));
+    const totalParts = boxesPerCtn * snp;
+    const usedVol = boxesPerCtn * pkgL * pkgW * pkgH;
+    const containerVol = ctnL * ctnW * ctnH;
+    const fillRate = usedVol / containerVol;
+
+    const matInfo = MATERIAL_PRICES[material];
+    const surfaceArea = (pkgL * pkgW + pkgL * pkgH + pkgW * pkgH) * 2 / 1e6;
+    const materialCost = surfaceArea * matInfo.surfacePricePerM2;
+    const laborCost = matInfo.laborCost;
+    const antiRustCost = part.antiRust ? 25 : 0;
+    const consumableCost = part.antiRust ? (15 + snp * 3) : snp * 2;
+    const singlePkgCost = materialCost + laborCost + antiRustCost + consumableCost;
+
+    const orientationLabels = { flat: '平放', stand: '立放', side: '侧放', stack: '叠放' };
+
+    return {
+      id: `${material}-${boxId}`,
+      name: `${matInfo.name} ${boxName}`,
+      desc: `${orientationLabels[orientation]} | 每箱 ${snp} 件 | 包箱 ${pkgL}×${pkgW}×${pkgH}mm`,
+      snp,
+      orientation,
+      pkgL, pkgW, pkgH,
+      material,
+      boxId,
+      perBoxWeight,
+      boxesPerCtn,
+      totalParts,
+      fillRate,
+      singlePkgCost,
+    };
+  }
+
+  // 遍历所有固定包箱规格 × 材料组合
+  for (const box of BOX_SPECS) {
+    for (const mat of ['wood', 'carton', 'iron']) {
+      // 计算该零件在此包箱内的SNP
+      const snpResult = calcSNP(box.l, box.w, box.h);
+      if (!snpResult || snpResult.snp < 1) continue;
+
+      const m = evalMethod({
+        boxId: box.id,
+        boxName: box.name,
+        boxL: box.l,
+        boxW: box.w,
+        boxH: box.h,
+        material: mat,
+        snp: snpResult.snp,
+        orientation: snpResult.orientation,
+      });
+      if (m) methods.push(m);
+    }
+  }
+
+  // Sort by fill rate descending
+  methods.sort((a, b) => b.fillRate - a.fillRate);
+  return methods;
+}
+
+function calcFillRate(pkgL, pkgW, pkgH, snp, part) {
+  const ctnSpec = part.ctnSpec;
+  const nx = Math.floor(ctnSpec.l / pkgL);
+  const ny = Math.floor(ctnSpec.w / pkgW);
+  const nz = Math.floor(ctnSpec.h / pkgH);
+  const byVolume = nx * ny * nz;
+  const perBoxWeight = part.weight * snp + estimatePkgWeight(pkgL, pkgW, pkgH);
+  const byWeight = perBoxWeight > 0 ? Math.floor(ctnSpec.maxWeight / perBoxWeight) : byVolume;
+  const boxesPerContainer = Math.max(1, Math.min(byVolume, byWeight));
+  const usedVol = boxesPerContainer * pkgL * pkgW * pkgH;
+  const containerVol = ctnSpec.l * ctnSpec.w * ctnSpec.h;
+  return usedVol / containerVol;
+}
+
+function calcBoxesPerContainer(pkgL, pkgW, pkgH, snp, part) {
+  const ctnSpec = part.ctnSpec;
+  const nx = Math.floor(ctnSpec.l / pkgL);
+  const ny = Math.floor(ctnSpec.w / pkgW);
+  const nz = Math.floor(ctnSpec.h / pkgH);
+  const byVolume = nx * ny * nz;
+  const perBoxWeight = part.weight * snp + estimatePkgWeight(pkgL, pkgW, pkgH);
+  const byWeight = perBoxWeight > 0 ? Math.floor(ctnSpec.maxWeight / perBoxWeight) : byVolume;
+  return Math.max(1, Math.min(byVolume, byWeight));
+}
+
+function goStep2() {
+  const part = getPartInput();
+  const err = validatePartInput(part);
+  if (err) { alert(err); return; }
+
+  state.currentPart = part;
+  state.pkgMethods = computePkgMethods(part);
+  state.selectedPkgMethod = state.pkgMethods[0].id; // default: highest fill rate
+
+  // Render summary
+  document.getElementById('partInfoSummary').innerHTML =
+    `<b>${part.partNo}</b> ${part.partName ? '(' + part.partName + ')' : ''} | ` +
+    `${part.l}×${part.w}×${part.h} mm | ${part.weight}kg${part.maxLoad ? ' | 最大承重:' + part.maxLoad + 'kg' : ''} | ` +
+    `零件数量: ${part.qty} 件${(part.loadChars && part.loadChars.length) ? ' | 特性:' + part.loadChars.join('/') : ''} | ` +
+    `分类: ${part.category}类 | 集装箱: ${CONTAINER_SPECS[state.selectedContainer].label}`;
+
+  // Render options
+  const container = document.getElementById('pkgOptions');
+  container.innerHTML = state.pkgMethods.map((m, i) => `
+    <div class="pkg-option ${m.id === state.selectedPkgMethod ? 'selected' : ''}"
+         data-id="${m.id}" onclick="selectPkgMethod(this, '${m.id}')">
+      <span class="check-mark">✓</span>
+      <div class="opt-title">${i === 0 ? '⭐ ' : ''}${m.name}</div>
+      <div class="opt-desc">
+        ${m.desc}<br/>
+        包箱尺寸：${m.pkgL}×${m.pkgW}×${m.pkgH} mm &nbsp;|&nbsp;
+        单箱重量：<b>${m.perBoxWeight.toFixed(1)}kg</b><br/>
+        集装箱空间利用率：<b style="color:var(--primary)">${(m.fillRate * 100).toFixed(1)}%</b>
+        &nbsp;|&nbsp; 每集装箱 ${m.totalParts} 件
+      </div>
+    </div>
+  `).join('');
+
+  // Show 3D preview for default selected method
+  const defaultMethod = state.pkgMethods.find(m => m.id === state.selectedPkgMethod);
+  if (defaultMethod) showPkgPreview(defaultMethod, part);
+
+  goStep(2);
+}
+
+function selectPkgMethod(el, id) {
+  document.querySelectorAll('.pkg-option').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+  state.selectedPkgMethod = id;
+  const method = state.pkgMethods.find(m => m.id === id);
+  if (method) showPkgPreview(method, state.currentPart);
+}
+
+/* ────────────────────────────── Step 3: Package Scheme ────────────────────────────── */
+function goStep3() {
+  const part = getPartInput();
+  const method = state.pkgMethods.find(m => m.id === state.selectedPkgMethod);
+  if (!method) { alert('请先选择包装方式'); return; }
+
+  const ctnSpec = part.ctnSpec;
+  // Reuse values already computed in computePkgMethods evalMethod()
+  const boxesPerCtn = calcBoxesPerContainer(method.pkgL, method.pkgW, method.pkgH, method.snp, part);
+  const totalPartsPerCtn = boxesPerCtn * method.snp;
+  const totalVolume = method.pkgL * method.pkgW * method.pkgH * boxesPerCtn;
+  const ctnVolume = ctnSpec.l * ctnSpec.w * ctnSpec.h;
+  const fillRate = totalVolume / ctnVolume;
+  const pkgMatWeight = estimatePkgWeight(method.pkgL, method.pkgW, method.pkgH, part);
+  const totalWeightPerCtn = boxesPerCtn * (part.weight * method.snp + pkgMatWeight);
+
+  const batchesNeeded = Math.ceil(part.batchQty / totalPartsPerCtn);
+  const totalPkgCost = estimateSinglePkgCost(method, part);
+  const batchPkgCost = boxesPerCtn * batchesNeeded * totalPkgCost;
+
+  state.scheme = {
+    method, boxesPerCtn, totalPartsPerCtn, fillRate,
+    totalWeightPerCtn, batchesNeeded, totalPkgCost, batchPkgCost,
+  };
+
+  // ── Constraint validation ──
+  const ctnMaxWeight = ctnSpec.maxWeight;
+  const maxLoad = part.maxLoad || 0;
+  const loadChars = part.loadChars || [];
+  const perBoxTotalWeight = part.weight * method.snp + pkgMatWeight;
+  const ctnLoadPct = (totalWeightPerCtn / ctnMaxWeight * 100).toFixed(1);
+  const maxLoadPct = maxLoad > 0 ? (perBoxTotalWeight / maxLoad * 100).toFixed(1) : null;
+
+  const warnings = [];
+  if (maxLoad > 0 && perBoxTotalWeight > maxLoad) warnings.push(`⚠️ 单箱重量 ${perBoxTotalWeight.toFixed(1)}kg 超过零件最大承重 ${maxLoad}kg`);
+  if (totalWeightPerCtn > ctnMaxWeight) warnings.push(`⚠️ 集装箱总重量 ${totalWeightPerCtn.toFixed(1)}kg 超过最大载重 ${ctnMaxWeight}kg`);
+  if (loadChars.includes('易碎') && method.orientation === 'stack') warnings.push('⚠️ 易碎件不得使用叠放方式');
+  if (loadChars.includes('不可倒置') && method.orientation === 'stand') warnings.push('⚠️ 不可倒置件不得使用立放方式');
+  if (method.pkgL > ctnSpec.l || method.pkgW > ctnSpec.w || method.pkgH > ctnSpec.h) warnings.push('⚠️ 包装箱尺寸超出集装箱内径');
+
+  const constraintOk = warnings.length === 0;
+
+  // ── Render scheme table ──
+  const rows = [
+    ['零件号', part.partNo, ''],
+    ['零件数量', `${part.qty} 件`, '本次采购/生产件数'],
+    ['零件尺寸', `${part.l} × ${part.w} × ${part.h} mm`, '长×宽×高'],
+    ['包装方式', method.name, ''],
+    ['包箱规格', method.boxId === 'A' ? '规格A（1000×800×500mm）' : '规格B（800×600×400mm）', ''],
+    ['摆放方式', method.orientation === 'flat' ? '平放' : method.orientation === 'stand' ? '立放' : method.orientation === 'stack' ? '叠放' : method.orientation === 'side' ? '侧放' : method.orientation, ''],
+    ['SNP（每箱件数）', `${method.snp} 件`, 'Standard Packing Quantity'],
+    ['每集装箱箱数', `${boxesPerCtn} 箱`, '按尺寸+重量取小值'],
+    ['每集装箱总件数', `${totalPartsPerCtn} 件`, '箱数 × SNP'],
+    ['集装箱空间利用率', `${(fillRate * 100).toFixed(1)}%`, '已用体积 / 箱体积'],
+    ['单箱总重量', `${perBoxTotalWeight.toFixed(1)} kg`, maxLoad > 0 ? `零件最大承重 ${maxLoad}kg（${maxLoadPct}%）` : '集装箱最大载重 ' + ctnMaxWeight + 'kg'],
+    ['集装箱总重量', `${totalWeightPerCtn.toFixed(1)} kg`, `集装箱最大载重 ${ctnMaxWeight}kg（${ctnLoadPct}%）`],
+    ['经济批次所需箱数', `${batchesNeeded} 箱`, `按批次量 ${part.batchQty} 件计算`],
+    ['单个包装箱成本', `¥${totalPkgCost.toFixed(2)}`, '材料+人工+防锈'],
+    ['约束校验', constraintOk ? `<span style="color:var(--success)">✅ 全部通过</span>` : warnings.join('<br/>'), ''],
+  ];
+  if (loadChars.length > 0) {
+    rows.push(['装载特性', loadChars.join('、'), '已选择']);
+  }
+  const tbody = document.getElementById('schemeBody');
+  tbody.innerHTML = rows.map(r => `<tr><td>${r[0]}</td><td><b>${r[1]}</b></td><td>${r[2]}</td></tr>`).join('');
+
+  // Draw layout
+  drawLayout(part, method, boxesPerCtn);
+  state.layoutPart = part;
+  state.layoutMethod = method;
+  state.loadedParts = 0;
+  state.layoutAlpha = Math.PI / 5;  // default rotation
+  state.layoutBeta  = Math.PI / 7;  // default tilt
+  document.getElementById('loadedCountLabel').textContent = '0 件';
+  document.getElementById('totalCapLabel').textContent = totalPartsPerCtn;
+  document.getElementById('loadingProgress').textContent = '';
+
+  goStep(3);
+}
+
+function estimatePkgWeight(pkgL, pkgW, pkgH, part) {
+  // Support both legacy signature (method, part) and new (pkgL, pkgW, pkgH, part)
+  let pL, pW, pH, mat;
+  if (typeof pkgL === 'object') {
+    // legacy: estimatePkgWeight(method, part)
+    const m = pkgL;
+    const p = pkgW;
+    pL = m.pkgL; pW = m.pkgW; pH = m.pkgH;
+    const matKey = m.material || p.material;
+    mat = MATERIAL_PRICES[matKey];
+  } else {
+    pL = pkgL; pW = pkgW; pH = pkgH;
+    mat = part ? MATERIAL_PRICES[part.material] : MATERIAL_PRICES['wood'];
+  }
+  const surfaceArea = (pL * pW + pL * pH + pW * pH) * 2 / 1e6;
+  return surfaceArea * 5; // rough 5kg/m²
+}
+
+function estimateSinglePkgCost(method, part) {
+  // 优先使用method中指定的材料（固定包箱方案确定后材料也随之确定）
+  const matKey = method.material || part.material;
+  const matInfo = MATERIAL_PRICES[matKey];
+  const surfaceArea = (method.pkgL * method.pkgW + method.pkgL * method.pkgH + method.pkgW * method.pkgH) * 2 / 1e6;
+  const materialCost = surfaceArea * matInfo.surfacePricePerM2;
+  const laborCost = matInfo.laborCost;
+  const antiRustCost = part.antiRust ? 25 : 0;
+  // VCI 防锈膜 / 干燥剂
+  const consumableCost = part.antiRust ? (15 + method.snp * 3) : method.snp * 2;
+  return materialCost + laborCost + antiRustCost + consumableCost;
+}
+
+function drawLayout(part, method, boxes) {
+  const canvas = document.getElementById('layoutCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const ctnSpec = part.ctnSpec;
+  const ctnL = ctnSpec.l;
+  const ctnW = ctnSpec.w;
+  const ctnH = ctnSpec.h;
+  const loaded = state.loadedParts;
+  const maxToShow = Math.min(loaded, boxes * method.snp);
+
+  const alpha = state.layoutAlpha || Math.PI / 5;
+  const beta  = state.layoutBeta  || Math.PI / 7;
+
+  // ── Shift container so its BOTTOM CENTER is world origin ──
+  // This makes rotation happen around the container's geometric center
+  const CX = ctnL / 2;
+  const CZ = ctnW / 2;
+
+  const approxDiag = Math.sqrt(ctnL * ctnL + ctnW * ctnW + ctnH * ctnH);
+  const scale = Math.min(W, H) * 0.84 / approxDiag;
+  const OX = W / 2;
+  const OY = H / 2;
+
+  function pt(x, y, z) {
+    // Shift so container bottom-center is at origin
+    const xs = x - CX;
+    const ys = y;
+    const zs = z - CZ;
+    // Y-rotation (alpha)
+    const x1 = xs * Math.cos(alpha) - zs * Math.sin(alpha);
+    const z1 = xs * Math.sin(alpha) + zs * Math.cos(alpha);
+    // X-rotation (beta)
+    const y2 = ys * Math.cos(beta) - z1 * Math.sin(beta);
+    const z2 = ys * Math.sin(beta) + z1 * Math.cos(beta);
+    return { px: OX + x1 * scale, py: OY - y2 * scale, depth: z2 };
+  }
+
+  function drawPoly(pts, fillColor, strokeColor, lw) {
+    if (!pts || pts.length < 3) return;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].px, pts[0].py);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].px, pts[i].py);
+    ctx.closePath();
+    if (fillColor) { ctx.fillStyle = fillColor; ctx.fill(); }
+    if (strokeColor) { ctx.strokeStyle = strokeColor; ctx.lineWidth = lw || 0.8; ctx.stroke(); }
+  }
+
+  function drawEdge(a, b, color, lw, shadow) {
+    if (shadow) {
+      ctx.shadowColor = shadow;
+      ctx.shadowBlur = 4;
+    }
+    ctx.beginPath();
+    ctx.moveTo(a.px, a.py);
+    ctx.lineTo(b.px, b.py);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lw || 1;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  function rotNormal(n) {
+    const x1 = n[0] * Math.cos(alpha) - n[2] * Math.sin(alpha);
+    const z1 = n[0] * Math.sin(alpha) + n[2] * Math.cos(alpha);
+    const y2 = n[1] * Math.cos(beta) - z1 * Math.sin(beta);
+    const z2 = n[1] * Math.sin(beta) + z1 * Math.cos(beta);
+    return [x1, y2, z2];
+  }
+
+  // ── Draw floor shadow (ground ellipse under container) ──
+  const floorPt = pt(0, 0, 0);
+  const floorL  = pt(ctnL, 0, 0);
+  const floorW  = pt(0, 0, ctnW);
+  const floorDiag = pt(ctnL, 0, ctnW);
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(floorPt.px, floorPt.py);
+  ctx.lineTo(floorW.px, floorW.py);
+  ctx.lineTo(floorDiag.px, floorDiag.py);
+  ctx.lineTo(floorL.px, floorL.py);
+  ctx.closePath();
+  const shadowGrad = ctx.createRadialGradient(
+    (floorPt.px + floorDiag.px) / 2, (floorPt.py + floorDiag.py) / 2, 0,
+    (floorPt.px + floorDiag.px) / 2, (floorPt.py + floorDiag.py) / 2,
+    Math.hypot(ctnL, ctnW) * scale * 0.7
+  );
+  shadowGrad.addColorStop(0, 'rgba(0,0,0,0.18)');
+  shadowGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = shadowGrad;
+  ctx.fill();
+  ctx.restore();
+
+  // ── Container faces ──
+  // Steel blue color palette
+  const containerFills = {
+    z: 'rgba(52,73,94,0.55)',   // side face (z offset)
+    x: 'rgba(52,73,94,0.70)',   // front-right face
+    y: 'rgba(52,73,94,0.30)',   // top face (glass effect)
+    y0: 'rgba(52,73,94,0.20)',  // bottom face
+  };
+  const containerStrokes = '#5d7a96';
+
+  const normals = [
+    { n: [0, 0, 1],  verts: [[0,0,ctnW],[ctnL,0,ctnW],[ctnL,ctnH,ctnW],[0,ctnH,ctnW]] },
+    { n: [0, 0, -1], verts: [[ctnL,0,0],[0,0,0],[0,ctnH,0],[ctnL,ctnH,0]] },
+    { n: [1, 0, 0],  verts: [[ctnL,0,0],[ctnL,0,ctnW],[ctnL,ctnH,ctnW],[ctnL,ctnH,0]] },
+    { n: [-1,0, 0],  verts: [[0,0,ctnW],[0,0,0],[0,ctnH,0],[0,ctnH,ctnW]] },
+    { n: [0, 1, 0],  verts: [[0,ctnH,0],[ctnL,ctnH,0],[ctnL,ctnH,ctnW],[0,ctnH,ctnW]] },
+    { n: [0,-1, 0],  verts: [[0,0,ctnW],[ctnL,0,ctnW],[ctnL,0,0],[0,0,0]] },
+  ];
+
+  // Collect visible faces then sort back-to-front
+  const visCtnFaces = [];
+  normals.forEach((f, fi) => {
+    const rn = rotNormal(f.n);
+    if (rn[2] < 0) {
+      const projected = f.verts.map(v => pt(...v));
+      const centerDepth = projected.reduce((s, p) => s + p.depth, 0) / projected.length;
+      let fill;
+      if (fi === 0) fill = containerFills.z;
+      else if (fi === 2) fill = containerFills.x;
+      else if (fi === 4) fill = containerFills.y;
+      else fill = containerFills.y0;
+      visCtnFaces.push({ pts: projected, fill, depth: centerDepth });
+    }
+  });
+  visCtnFaces.sort((a, b) => a.depth - b.depth);
+  visCtnFaces.forEach(f => drawPoly(f.pts, f.fill, containerStrokes, 1.2));
+
+  // Container edges (only on visible corners)
+  const visibleEdgeSet = new Set();
+  visCtnFaces.forEach(f => {
+    // For each face, mark its edges
+    f.pts.forEach((p, pi) => {
+      const key = `${p.px.toFixed(2)},${p.py.toFixed(2)}`;
+      visibleEdgeSet.add(key);
+    });
+  });
+
+  const edgeMap = {};
+  function addEdge(a, b) {
+    const ka = `${a.px.toFixed(2)},${a.py.toFixed(2)}`;
+    const kb = `${b.px.toFixed(2)},${b.py.toFixed(2)}`;
+    if (!edgeMap[ka]) edgeMap[ka] = a;
+    if (!edgeMap[kb]) edgeMap[kb] = b;
+    if (!edgeMap[`${ka}->${kb}`]) {
+      edgeMap[`${ka}->${kb}`] = true;
+      edgeMap[`${kb}->${ka}`] = true;
+      drawEdge(a, b, containerStrokes, 1.6, 'rgba(52,73,94,0.5)');
+    }
+  }
+
+  // Draw edges between adjacent visible face vertices
+  const cVerts = [
+    pt(0,0,0), pt(ctnL,0,0), pt(ctnL,0,ctnW), pt(0,0,ctnW),
+    pt(0,ctnH,0), pt(ctnL,ctnH,0), pt(ctnL,ctnH,ctnW), pt(0,ctnH,ctnW),
+  ];
+  const cEdges = [
+    [0,1],[1,2],[2,3],[3,0],
+    [4,5],[5,6],[6,7],[7,4],
+    [0,4],[1,5],[2,6],[3,7],
+  ];
+  cEdges.forEach(([a, b]) => addEdge(cVerts[a], cVerts[b]));
+
+  // ── Package boxes ──
+  if (maxToShow === 0) {
+    ctx.fillStyle = 'rgba(160,170,185,0.7)';
+    ctx.font = 'bold 15px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('拖动旋转 · 点击上方「+1 件」或「+10 件」开始装载', OX, OY + ctnH * scale * 0.3);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(100,115,130,0.7)';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${ctnSpec.label}  ·  拖动可旋转  ·  ${ctnL}×${ctnW}×${ctnH}mm`, OX, H - 16);
+    ctx.textAlign = 'left';
+    return;
+  }
+
+  const filledBoxes = Math.floor(maxToShow / method.snp);
+  const lastBoxParts = maxToShow % method.snp;
+  const pkgL = method.pkgL;
+  const pkgW = method.pkgW;
+  const pkgH = method.pkgH;
+  const nx = Math.floor(ctnL / pkgL);
+  const ny = Math.floor(ctnH / pkgH);
+  const nz = Math.floor(ctnW / pkgW);
+
+  // Vibrant color palettes — each box gets a distinct hue
+  const palettes = [
+    { fill: '#3498db', dark: '#1f6aa5', mid: '#2980b9' },  // blue
+    { fill: '#27ae60', dark: '#1a7a42', mid: '#219150' },  // green
+    { fill: '#e67e22', dark: '#a0510e', mid: '#c8691a' },  // orange
+    { fill: '#9b59b6', dark: '#6c3483', mid: '#7d3c98' },  // purple
+    { fill: '#e74c3c', dark: '#a93226', mid: '#c0392b' },  // red
+    { fill: '#1abc9c', dark: '#0e7868', mid: '#16a085' },  // teal
+  ];
+
+  // Collect all box faces
+  const allFaces = [];
+  let partIndex = 0;
+  for (let ix = 0; ix < nx && partIndex < filledBoxes + (lastBoxParts > 0 ? 1 : 0); ix++) {
+    for (let iz = 0; iz < nz && partIndex < filledBoxes + (lastBoxParts > 0 ? 1 : 0); iz++) {
+      for (let iy = 0; iy < ny && partIndex < filledBoxes + (lastBoxParts > 0 ? 1 : 0); iy++) {
+        const pal = palettes[partIndex % palettes.length];
+        const bx0 = ix * pkgL, bx1 = Math.min(bx0 + pkgL, ctnL);
+        const by0 = iy * pkgH, by1 = Math.min(by0 + pkgH, ctnH);
+        const bz0 = iz * pkgW, bz1 = Math.min(bz0 + pkgW, ctnW);
+
+        const corners = [
+          pt(bx0, by0, bz0), pt(bx1, by0, bz0), pt(bx1, by0, bz1), pt(bx0, by0, bz1),
+          pt(bx0, by1, bz0), pt(bx1, by1, bz0), pt(bx1, by1, bz1), pt(bx0, by1, bz1),
+        ];
+
+        const faceDefs = [
+          { v: [4,5,6,7], n: [0,1,0] },  // top      — brightest
+          { v: [3,7,6,2], n: [0,0,1] },  // z-front
+          { v: [2,6,5,1], n: [1,0,0] },  // x-right
+          { v: [0,4,7,3], n: [-1,0,0] }, // x-left
+          { v: [1,5,4,0], n: [0,0,-1] }, // z-back
+          { v: [0,3,2,1], n: [0,-1,0] }, // bottom   — darkest
+        ];
+
+        faceDefs.forEach(fd => {
+          const rn = rotNormal(fd.n);
+          if (rn[2] < 0) {
+            const fpts = fd.v.map(vi => corners[vi]);
+            const centerDepth = fpts.reduce((s, p) => s + p.depth, 0) / fpts.length;
+            let alphaHex;
+            if (fd.n[1] === 1)       alphaHex = '55'; // top — most opaque
+            else if (fd.n[1] === -1) alphaHex = '18'; // bottom — ghost
+            else if (fd.n[0] === 1)  alphaHex = '38'; // right — medium
+            else if (fd.n[0] === -1) alphaHex = '2a'; // left — slightly darker
+            else                     alphaHex = '42'; // front — visible
+            allFaces.push({ pts: fpts, fill: pal.fill + alphaHex, stroke: pal.dark, depth: centerDepth, lw: 0.7 });
+          }
+        });
+
+        partIndex++;
+      }
+    }
+  }
+
+  allFaces.sort((a, b) => a.depth - b.depth);
+  allFaces.forEach(f => drawPoly(f.pts, f.fill, f.stroke, f.lw));
+
+  // Title & hint
+  ctx.fillStyle = 'rgba(80,95,110,0.75)';
+  ctx.font = '11px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(`${ctnSpec.label}  ·  ${maxToShow} 件已装载  ·  拖动可旋转`, OX, H - 16);
+  ctx.textAlign = 'left';
+}
+
+/* ────────────────────────────── Mouse Drag for 3D Rotation ────────────────────────────── */
+let _drag = { active: false, startX: 0, startY: 0, startAlpha: 0, startBeta: 0 };
+
+document.getElementById('layoutCanvas').addEventListener('mousedown', function(e) {
+  _drag.active = true;
+  _drag.startX = e.clientX;
+  _drag.startY = e.clientY;
+  _drag.startAlpha = state.layoutAlpha || Math.PI / 5;
+  _drag.startBeta  = state.layoutBeta  || Math.PI / 7;
+  e.preventDefault();
+});
+
+document.addEventListener('mousemove', function(e) {
+  if (!_drag.active) return;
+  const dx = e.clientX - _drag.startX;
+  const dy = e.clientY - _drag.startY;
+  state.layoutAlpha = _drag.startAlpha + dx * 0.012;
+  // Clamp beta to avoid gimbal lock / flipping
+  state.layoutBeta = Math.max(-Math.PI / 3, Math.min(Math.PI / 2.2, _drag.startBeta + dy * 0.010));
+  drawLayout(state.layoutPart, state.layoutMethod, state.scheme ? state.scheme.boxesPerCtn : 0);
+});
+
+document.addEventListener('mouseup', function() {
+  _drag.active = false;
+});
+
+// Touch support
+document.getElementById('layoutCanvas').addEventListener('touchstart', function(e) {
+  const t = e.touches[0];
+  _drag.active = true;
+  _drag.startX = t.clientX;
+  _drag.startY = t.clientY;
+  _drag.startAlpha = state.layoutAlpha || Math.PI / 5;
+  _drag.startBeta  = state.layoutBeta  || Math.PI / 7;
+  e.preventDefault();
+}, { passive: false });
+
+document.addEventListener('touchmove', function(e) {
+  if (!_drag.active) return;
+  const t = e.touches[0];
+  const dx = t.clientX - _drag.startX;
+  const dy = t.clientY - _drag.startY;
+  state.layoutAlpha = _drag.startAlpha + dx * 0.012;
+  state.layoutBeta = Math.max(-Math.PI / 3, Math.min(Math.PI / 2.2, _drag.startBeta + dy * 0.010));
+  drawLayout(state.layoutPart, state.layoutMethod, state.scheme ? state.scheme.boxesPerCtn : 0);
+}, { passive: false });
+
+document.addEventListener('touchend', function() { _drag.active = false; });
+
+function addLoadedParts(n) {
+  if (!state.scheme) return;
+  const totalCap = state.scheme.totalPartsPerCtn;
+  const remain = totalCap - state.loadedParts;
+  if (remain <= 0) {
+    document.getElementById('loadingProgress').textContent = '已满载，无需再装';
+    return;
+  }
+  const add = Math.min(n, remain);
+  state.loadedParts = Math.min(state.loadedParts + add, totalCap);
+  document.getElementById('loadedCountLabel').textContent = state.loadedParts + ' 件';
+  const pct = (state.loadedParts / totalCap * 100).toFixed(1);
+  document.getElementById('loadingProgress').textContent = `进度 ${pct}%`;
+  // Redraw with new count (overwrites previous canvas content)
+  drawLayout(state.layoutPart, state.layoutMethod, state.scheme.boxesPerCtn);
+}
+
+function resetLoadedParts() {
+  if (!state.scheme) return;
+  state.loadedParts = 0;
+  document.getElementById('loadedCountLabel').textContent = '0 件';
+  document.getElementById('loadingProgress').textContent = '';
+  drawLayout(state.layoutPart, state.layoutMethod, state.scheme.boxesPerCtn);
+}
+
+/* ────────────────────────────── Package 3D Preview ────────────────────────────── */
+function showPkgPreview(method, part) {
+  const card = document.getElementById('pkgPreviewCard');
+  const titleEl = document.getElementById('pkgPreviewTitle');
+  const descEl = document.getElementById('pkgPreviewDesc');
+
+  card.style.display = 'block';
+  titleEl.textContent = method.name + ' 示意图';
+
+  // Build description
+  const orientationLabels = {
+    'flat': '平放',
+    'stand': '立放',
+    'stack': '叠放',
+    'side': '侧放',
+    'row': '并排',
+    'row-rotated': '并排（旋转）',
+  };
+  const orientLabel = orientationLabels[method.orientation] || method.orientation;
+  const descHtml = `
+    <p style="margin-bottom:10px;"><b>摆放方式：</b>${orientLabel}</p>
+    <p style="margin-bottom:10px;"><b>每箱件数（SNP）：</b>${method.snp} 件</p>
+    <p style="margin-bottom:10px;"><b>包箱尺寸：</b>${method.pkgL} × ${method.pkgW} × ${method.pkgH} mm</p>
+    <p style="margin-bottom:10px;"><b>空间利用率：</b><span style="color:var(--primary);font-weight:600">${(method.fillRate * 100).toFixed(1)}%</span></p>
+    <p style="margin-bottom:10px;"><b>单箱总重量：</b>${method.perBoxWeight.toFixed(1)} kg</p>
+    <p style="margin-bottom:10px;"><b>每集装箱装载：</b>${method.totalParts} 件（${method.boxesPerCtn} 箱）</p>
+    <hr style="border:none;border-top:1px solid var(--gray-5);margin:12px 0;"/>
+    <p style="color:var(--gray-3);font-size:12px;">💡 拖动下方图形可旋转视角</p>
+  `;
+  descEl.innerHTML = descHtml;
+
+  // Draw 3D preview
+  drawPkgPreview(method, part);
+}
+
+function drawPkgPreview(method, part) {
+  const canvas = document.getElementById('pkgPreviewCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // ── Outer box dimensions (packaging, including cushion) ──
+  const oL = method.pkgL;
+  const oW = method.pkgW;
+  const oH = method.pkgH;
+
+  // ── Inner part dimensions ──
+  // Reverse-calculate: outer = part + 2*(buffer+tolerance)
+  const gap = 2 * (part.buffer + part.tolerance);
+  const iL = Math.max(1, oL - gap);
+  const iW = Math.max(1, oW - gap);
+  const iH = Math.max(1, oH - gap);
+
+  // Inner part offset from outer box inner wall (the cushion gap on each side / 2)
+  const off = (part.buffer + part.tolerance);
+
+  const alpha = state.previewAlpha || Math.PI / 5;
+  const beta  = state.previewBeta  || Math.PI / 4;
+
+  // Scale: fit the full outer box (including rotation) into canvas
+  const approxDiag = Math.sqrt(oL * oL + oW * oW + oH * oH);
+  const scale = Math.min(W, H) * 0.78 / approxDiag;
+  const OX = W / 2;   // canvas center X
+  const OY = H / 2;   // canvas center Y
+
+  // ── 3D point: rotate around BOX CENTER, then project ──
+  function pt(x, y, z) {
+    // Shift origin to box geometric center
+    const xs = x - oL / 2;
+    const ys = y - oH / 2;
+    const zs = z - oW / 2;
+    // Y-axis rotation
+    const x1 = xs * Math.cos(alpha) - zs * Math.sin(alpha);
+    const z1 = xs * Math.sin(alpha) + zs * Math.cos(alpha);
+    // X-axis rotation (tilt)
+    const y2 = ys * Math.cos(beta) - z1 * Math.sin(beta);
+    const z2 = ys * Math.sin(beta) + z1 * Math.cos(beta);
+    return { px: OX + x1 * scale, py: OY - y2 * scale, depth: z2 };
+  }
+
+  function drawPoly(pts, fillColor, strokeColor, lw) {
+    if (!pts || pts.length < 3) return;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].px, pts[0].py);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].px, pts[i].py);
+    ctx.closePath();
+    if (fillColor) { ctx.fillStyle = fillColor; ctx.fill(); }
+    if (strokeColor) { ctx.strokeStyle = strokeColor; ctx.lineWidth = lw || 0.8; ctx.stroke(); }
+  }
+
+  function drawEdge(a, b, color, lw) {
+    ctx.shadowColor = 'rgba(0,0,0,0.18)';
+    ctx.shadowBlur = 4;
+    ctx.beginPath();
+    ctx.moveTo(a.px, a.py);
+    ctx.lineTo(b.px, b.py);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lw || 1.2;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  function rotNormal(n) {
+    const x1 = n[0] * Math.cos(alpha) - n[2] * Math.sin(alpha);
+    const z1 = n[0] * Math.sin(alpha) + n[2] * Math.cos(alpha);
+    const y2 = n[1] * Math.cos(beta) - z1 * Math.sin(beta);
+    const z2 = n[1] * Math.sin(beta) + z1 * Math.cos(beta);
+    return [x1, y2, z2];
+  }
+
+  // ── Colors ──
+  // Outer packaging box (cardboard-tan semi-transparent)
+  const pkgTop    = 'rgba(210,180,140,0.35)';
+  const pkgRight  = 'rgba(180,140,100,0.55)';
+  const pkgFront  = 'rgba(160,120,80,0.60)';
+  const pkgLeft   = 'rgba(140,100,70,0.45)';
+  const pkgBottom = 'rgba(120,85,60,0.30)';
+  const pkgEdge   = '#8B6914';
+
+  // Inner part (solid, vivid color per part)
+  const partPalettes = [
+    { fill: '#3498db', dark: '#1f6aa5', light: '#85c1e9' },  // blue
+    { fill: '#27ae60', dark: '#1a7a42', light: '#82e0aa' },  // green
+    { fill: '#e67e22', dark: '#a0510e', light: '#f5b041' },  // orange
+    { fill: '#9b59b6', dark: '#6c3483', light: '#c39bd3' },  // purple
+    { fill: '#e74c3c', dark: '#a93226', light: '#f1948a' },  // red
+    { fill: '#1abc9c', dark: '#0e7868', light: '#76d7c4' },  // teal
+  ];
+
+  const partTop   = 'rgba(52,152,219,0.80)';
+  const partRight = 'rgba(41,128,185,0.92)';
+  const partFront = 'rgba(30,100,160,0.88)';
+  const partLeft  = 'rgba(25,80,130,0.75)';
+  const partBot   = 'rgba(20,60,100,0.60)';
+  const partEdge  = '#1a5276';
+
+  // Cushion gap face colors (pinkish/foam look)
+  const cushFill  = 'rgba(230,190,200,0.55)';
+  const cushEdge  = '#c9a0a0';
+
+  const partFaceColors = { 0: partFront, 1: partFront, 2: partRight, 3: partLeft, 4: partTop, 5: partBot };
+  const pkgFaceColors  = { 0: pkgFront,  1: pkgFront,  2: pkgRight,  3: pkgLeft,  4: pkgTop,  5: pkgBottom };
+
+  // ── Floor shadow ──
+  const fp0 = pt(0, 0, 0), fp1 = pt(oL, 0, 0), fp2 = pt(oL, 0, oW), fp3 = pt(0, 0, oW);
+  ctx.save();
+  const sGrad = ctx.createRadialGradient(
+    (fp0.px + fp2.px) / 2, (fp0.py + fp2.py) / 2, 0,
+    (fp0.px + fp2.px) / 2, (fp0.py + fp2.py) / 2,
+    Math.hypot(oL, oW) * scale * 0.75
+  );
+  sGrad.addColorStop(0, 'rgba(0,0,0,0.20)');
+  sGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.beginPath();
+  ctx.moveTo(fp0.px, fp0.py); ctx.lineTo(fp1.px, fp1.py);
+  ctx.lineTo(fp2.px, fp2.py); ctx.lineTo(fp3.px, fp3.py);
+  ctx.closePath();
+  ctx.fillStyle = sGrad; ctx.fill();
+  ctx.restore();
+
+  // ── Helper: compute box face visibility + project ──
+  function getBoxFaces(L, Wg, H, offset) {
+    // offset shifts inner box position (default cushions on all sides)
+    const ox = offset, oy = offset, oz = offset;
+    const normals = [
+      { n: [0, 0, 1],  fi: 0, verts: [[ox,oy,oz+Wg],[ox+L,oy,oz+Wg],[ox+L,oy+H,oz+Wg],[ox,oy+H,oz+Wg]] },
+      { n: [0, 0,-1],  fi: 1, verts: [[ox+L,oy,oz],[ox,oy,oz],[ox,oy+H,oz],[ox+L,oy+H,oz]] },
+      { n: [1, 0, 0],  fi: 2, verts: [[ox+L,oy,oz],[ox+L,oy,oz+Wg],[ox+L,oy+H,oz+Wg],[ox+L,oy+H,oz]] },
+      { n: [-1,0, 0],  fi: 3, verts: [[ox,oy,oz+Wg],[ox,oy,oz],[ox,oy+H,oz],[ox,oy+H,oz+Wg]] },
+      { n: [0, 1, 0],  fi: 4, verts: [[ox,oy+H,oz],[ox+L,oy+H,oz],[ox+L,oy+H,oz+Wg],[ox,oy+H,oz+Wg]] },
+      { n: [0,-1, 0],  fi: 5, verts: [[ox,oy,oz+Wg],[ox+L,oy,oz+Wg],[ox+L,oy,oz],[ox,oy,oz]] },
+    ];
+    const visFaces = [];
+    normals.forEach(f => {
+      const rn = rotNormal(f.n);
+      if (rn[2] < 0) {
+        const proj = f.verts.map(v => pt(...v));
+        const depth = proj.reduce((s, p) => s + p.depth, 0) / proj.length;
+        visFaces.push({ fi: f.fi, pts: proj, depth });
+      }
+    });
+    visFaces.sort((a, b) => a.depth - b.depth);
+    return visFaces;
+  }
+
+  // ── Draw outer packaging box ──
+  const visPkg = getBoxFaces(oL, oW, oH, 0);
+  visPkg.forEach(f => {
+    drawPoly(f.pts, pkgFaceColors[f.fi], pkgEdge, 1.2);
+  });
+
+  // ── Draw inner part box(es) ──
+  const snp = method.snp;
+
+  if (snp === 1) {
+    // Single part: draw part centered with cushion gap
+    const visPart = getBoxFaces(iL, iW, iH, off);
+    visPart.forEach(f => {
+      drawPoly(f.pts, partFaceColors[f.fi], partEdge, 0.9);
+    });
+
+    // Cushion gap faces: thin shells between outer and inner (on top, right, front)
+    // We draw small gap faces on the 3 visible outer sides
+    // Top gap face: between outer top and part top
+    const topGap = off;
+    const topGapH = Math.min(topGap, 20); // cap visual gap height
+    const cushVis = getBoxFaces(oL, oW, topGapH, 0);
+    cushVis.forEach(f => {
+      if (f.fi === 4) { // top face only
+        drawPoly(f.pts, cushFill, cushEdge, 0.7);
+      }
+    });
+
+  } else {
+    // Multi-part: show grid of parts inside outer box
+    // Determine grid layout (max 2×2 or 3×3 visible)
+    const cols = Math.min(Math.ceil(Math.sqrt(snp)), 3);
+    const rows = Math.min(Math.ceil(snp / cols), 3);
+    const visParts = [];
+
+    const totalPartsToShow = Math.min(snp, cols * rows);
+    const gapX = oL - cols * iL - 2 * off; // remaining gap distributed
+    const gapY = oH - rows * iH - 2 * off;
+    const partGapX = gapX / (cols + 1); // cushion between parts in X
+    const partGapY = gapY / (rows + 1); // cushion between parts in Y
+
+    for (let p = 0; p < totalPartsToShow; p++) {
+      const row = Math.floor(p / cols);
+      const col = p % cols;
+      const px = off + partGapX + col * (iL + partGapX);
+      const py = off + partGapY + row * (iH + partGapY);
+      const pz = off;
+      const pal = partPalettes[p % partPalettes.length];
+
+      const pFaceColors = { 0: pal.fill+'e0', 1: pal.dark+'90', 2: pal.fill+'cc', 3: pal.dark+'70', 4: pal.light+'d0', 5: pal.dark+'60' };
+
+      const normals2 = [
+        { n: [0, 0, 1],  fi: 0, verts: [[px,py,pz+iW],[px+iL,py,pz+iW],[px+iL,py+iH,pz+iW],[px,py+iH,pz+iW]] },
+        { n: [0, 0,-1],  fi: 1, verts: [[px+iL,py,pz],[px,py,pz],[px,py+iH,pz],[px+iL,py+iH,pz]] },
+        { n: [1, 0, 0],  fi: 2, verts: [[px+iL,py,pz],[px+iL,py,pz+iW],[px+iL,py+iH,pz+iW],[px+iL,py+iH,pz]] },
+        { n: [-1,0, 0],  fi: 3, verts: [[px,py,pz+iW],[px,py,pz],[px,py+iH,pz],[px,py+iH,pz+iW]] },
+        { n: [0, 1, 0],  fi: 4, verts: [[px,py+iH,pz],[px+iL,py+iH,pz],[px+iL,py+iH,pz+iW],[px,py+iH,pz+iW]] },
+        { n: [0,-1, 0],  fi: 5, verts: [[px,py,pz+iW],[px+iL,py,pz+iW],[px+iL,py,pz],[px,py,pz]] },
+      ];
+
+      normals2.forEach(f => {
+        const rn = rotNormal(f.n);
+        if (rn[2] < 0) {
+          const proj = f.verts.map(v => pt(...v));
+          const depth = proj.reduce((s, p) => s + p.depth, 0) / proj.length;
+          visParts.push({ pts: proj, fill: pFaceColors[f.fi], depth });
+        }
+      });
+    }
+
+    visParts.sort((a, b) => a.depth - b.depth);
+    visParts.forEach(f => drawPoly(f.pts, f.fill, null, 0.5));
+
+    // Re-draw visible part edges on top
+    for (let p = 0; p < totalPartsToShow; p++) {
+      const row = Math.floor(p / cols);
+      const col = p % cols;
+      const px = off + partGapX + col * (iL + partGapX);
+      const py = off + partGapY + row * (iH + partGapY);
+      const pz = off;
+      const v = [
+        pt(px,py,pz), pt(px+iL,py,pz), pt(px+iL,py,pz+iW), pt(px,py,pz+iW),
+        pt(px,py+iH,pz), pt(px+iL,py+iH,pz), pt(px+iL,py+iH,pz+iW), pt(px,py+iH,pz+iW),
+      ];
+      const e2 = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+      e2.forEach(([a,b]) => {
+        ctx.shadowBlur = 0;
+        ctx.beginPath();
+        ctx.moveTo(v[a].px, v[a].py);
+        ctx.lineTo(v[b].px, v[b].py);
+        ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      });
+    }
+
+    // SNP label on top of outer box
+    const labelPt = pt(oL/2, oH, oW/2);
+    ctx.fillStyle = 'rgba(139,105,20,0.85)';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`SNP = ${snp}`, labelPt.px, labelPt.py - 4);
+    ctx.textAlign = 'left';
+  }
+
+  // ── Outer box edges (drawn on top) ──
+  const oVerts = [
+    pt(0,0,0), pt(oL,0,0), pt(oL,0,oW), pt(0,0,oW),
+    pt(0,oH,0), pt(oL,oH,0), pt(oL,oH,oW), pt(0,oH,oW),
+  ];
+  const oEdges = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+  oEdges.forEach(([a,b]) => drawEdge(oVerts[a], oVerts[b], pkgEdge, 1.6));
+
+  // ── SNP label + dimensions hint ──
+  if (snp === 1) {
+    const lPt = pt(oL/2, oH, oW/2);
+    ctx.fillStyle = 'rgba(139,105,20,0.80)';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`缓冲间隙 ${off}mm`, lPt.px, lPt.py - 4);
+    ctx.textAlign = 'left';
+  }
+
+  // Dimension callout lines
+  ctx.fillStyle = 'rgba(120,100,80,0.70)';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'center';
+  const dimL = pt(oL, 0, 0);
+  const dimW = pt(0, 0, oW);
+  const dimH = pt(0, oH, 0);
+  ctx.fillText(`${oL}mm`, (pt(0,0,0).px + dimL.px) / 2, pt(0,0,0).py + 14);
+  ctx.fillText(`${oW}mm`, (pt(0,0,0).px + dimW.px) / 2, pt(0,0,0).py + 4);
+  ctx.fillText(`${oH}mm`, (pt(0,0,0).px + dimH.px) / 2 + 4, (pt(0,0,0).py + dimH.py) / 2);
+  ctx.textAlign = 'left';
+}
+
+/* ────────────────────────────── Preview 3D Mouse Drag ────────────────────────────── */
+let _previewDrag = { active: false, startX: 0, startY: 0, startAlpha: 0, startBeta: 0 };
+
+const canvas = document.getElementById('pkgPreviewCanvas');
+canvas.addEventListener('mousedown', function(e) {
+  _previewDrag.active = true;
+  _previewDrag.startX = e.clientX;
+  _previewDrag.startY = e.clientY;
+  _previewDrag.startAlpha = state.previewAlpha || Math.PI / 5;
+  _previewDrag.startBeta  = state.previewBeta  || Math.PI / 4;
+  e.preventDefault();
+});
+document.addEventListener('mousemove', function(e) {
+  if (!_previewDrag.active) return;
+  const dx = e.clientX - _previewDrag.startX;
+  const dy = e.clientY - _previewDrag.startY;
+  state.previewAlpha = _previewDrag.startAlpha + dx * 0.012;
+  state.previewBeta = Math.max(-Math.PI / 3, Math.min(Math.PI / 2.2, _previewDrag.startBeta + dy * 0.010));
+  const method = state.pkgMethods.find(m => m.id === state.selectedPkgMethod);
+  if (method && state.currentPart) drawPkgPreview(method, state.currentPart);
+});
+document.addEventListener('mouseup', function() { _previewDrag.active = false; });
+
+canvas.addEventListener('touchstart', function(e) {
+  const t = e.touches[0];
+  _previewDrag.active = true;
+  _previewDrag.startX = t.clientX;
+  _previewDrag.startY = t.clientY;
+  _previewDrag.startAlpha = state.previewAlpha || Math.PI / 5;
+  _previewDrag.startBeta  = state.previewBeta  || Math.PI / 4;
+  e.preventDefault();
+}, { passive: false });
+document.addEventListener('touchmove', function(e) {
+  if (!_previewDrag.active) return;
+  const t = e.touches[0];
+  const dx = t.clientX - _previewDrag.startX;
+  const dy = t.clientY - _previewDrag.startY;
+  state.previewAlpha = _previewDrag.startAlpha + dx * 0.012;
+  state.previewBeta = Math.max(-Math.PI / 3, Math.min(Math.PI / 2.2, _previewDrag.startBeta + dy * 0.010));
+  const method = state.pkgMethods.find(m => m.id === state.selectedPkgMethod);
+  if (method && state.currentPart) drawPkgPreview(method, state.currentPart);
+}, { passive: false });
+document.addEventListener('touchend', function() { _previewDrag.active = false; });
+
+function goStep4() {
+  const part = getPartInput();
+  const scheme = state.scheme;
+  if (!scheme) return;
+
+  const method = scheme.method;
+  const matKey = method.material || part.material;
+  const matInfo = MATERIAL_PRICES[matKey];
+  const surfaceArea = (method.pkgL * method.pkgW + method.pkgL * method.pkgH + method.pkgW * method.pkgH) * 2 / 1e6;
+  const materialCost = surfaceArea * matInfo.surfacePricePerM2;
+  const laborCost = matInfo.laborCost;
+  const antiRustCost = part.antiRust ? 25 : 0;
+  const consumableCost = part.antiRust ? (15 + method.snp * 3) : method.snp * 2;
+  const singlePkgCost = materialCost + laborCost + antiRustCost + consumableCost;
+
+  // Per-container cost
+  const perContainerCost = scheme.boxesPerCtn * singlePkgCost;
+
+  // Per-part cost
+  const perPartCost = singlePkgCost / method.snp;
+
+  // Batch cost
+  const totalBoxes = scheme.batchesNeeded * scheme.boxesPerCtn;
+  const batchTotalCost = totalBoxes * singlePkgCost;
+
+  // Shipping cost estimate (simplified)
+  const shippingCostPerCtn = state.selectedContainer === '20gp' ? 12000 :
+                              state.selectedContainer === '40gp' ? 18000 : 20000;
+  const shippingPerPart = shippingCostPerCtn / scheme.totalPartsPerCtn;
+
+  // Total per part
+  const totalPerPart = perPartCost + shippingPerPart;
+
+  // Render cost summary cards
+  const cards = [
+    { label: '单箱包装成本', value: singlePkgCost.toFixed(2), unit: '元/箱', hl: false },
+    { label: '单件包装成本', value: perPartCost.toFixed(2), unit: '元/件', hl: true },
+    { label: '单件运输成本', value: shippingPerPart.toFixed(2), unit: '元/件', hl: false },
+    { label: '单件总成本', value: totalPerPart.toFixed(2), unit: '元/件', hl: true },
+    { label: '批次包装总成本', value: (batchTotalCost).toFixed(0), unit: `元（${scheme.batchesNeeded}箱）`, hl: false },
+    { label: '批次含运输总成本', value: (batchTotalCost + scheme.batchesNeeded * shippingCostPerCtn).toFixed(0), unit: '元', hl: true },
+  ];
+  document.getElementById('costSummary').innerHTML = cards.map(c => `
+    <div class="cost-item ${c.hl ? 'highlight' : ''}">
+      <div class="cost-label">${c.label}</div>
+      <div class="cost-value">¥${c.value}</div>
+      <div class="cost-unit">${c.unit}</div>
+    </div>
+  `).join('');
+
+  // Render cost detail table
+  const costRows = [
+    ['包装材料费', `¥${matInfo.surfacePricePerM2}/m²`, `${surfaceArea.toFixed(2)} m²`, materialCost.toFixed(2)],
+    ['人工费', `¥${matInfo.laborCost}/箱`, '1', laborCost.toFixed(2)],
+    ['防锈处理', part.antiRust ? '¥25/箱' : '—', part.antiRust ? '1' : '0', antiRustCost.toFixed(2)],
+    ['辅料（干燥剂/缓冲）', '按件数', `${method.snp} 件`, consumableCost.toFixed(2)],
+    ['合计/箱', '', '', `<b>¥${singlePkgCost.toFixed(2)}</b>`],
+  ];
+  document.getElementById('costBody').innerHTML = costRows.map(r =>
+    `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td></tr>`
+  ).join('');
+
+  // Summary text
+  document.getElementById('summaryText').innerHTML = `
+    <b>零件号：</b>${part.partNo} ${part.partName ? '(' + part.partName + ')' : ''}（${part.qty} 件）<br/>
+    <b>包装方式：</b>${method.name}（SNP=${method.snp}）<br/>
+    <b>包箱尺寸：</b>${method.pkgL}×${method.pkgW}×${method.pkgH} mm<br/>
+    <b>集装箱规格：</b>${CONTAINER_SPECS[state.selectedContainer].label}<br/>
+    <b>装载箱数：</b>${scheme.boxesPerCtn} 箱 / 集装箱<br/>
+    <b>空间利用率：</b>${(scheme.fillRate * 100).toFixed(1)}%<br/>
+    <b>单件包装成本：</b>¥${perPartCost.toFixed(2)} / 件<br/>
+    <b>单件总成本（含运输）：</b><span style="color:var(--primary);font-weight:700">¥${totalPerPart.toFixed(2)} / 件</span><br/>
+    <b>经济批次（${part.batchQty}件）总成本：</b>¥${(batchTotalCost + scheme.batchesNeeded * shippingCostPerCtn).toFixed(0)}
+  `;
+
+  goStep(4);
+}
+
+/* ────────────────────────────── Load Characteristics Multi-select ────────────────────────────── */
+function toggleLoadChars() {
+  const el = document.getElementById('loadCharsSelect');
+  el.classList.toggle('open');
+  // Close when clicking outside
+  document.querySelectorAll('.multi-select').forEach(ms => {
+    if (ms !== el) ms.classList.remove('open');
+  });
+}
+
+function updateLoadChars() {
+  const checked = Array.from(
+    document.querySelectorAll('#loadCharsSelect input[type="checkbox"]:checked')
+  ).map(cb => cb.value);
+
+  const placeholder = document.getElementById('loadCharsPlaceholder');
+  const tagsContainer = document.getElementById('loadCharsTags');
+
+  if (checked.length === 0) {
+    placeholder.style.display = '';
+    tagsContainer.innerHTML = '';
+  } else {
+    placeholder.style.display = 'none';
+    tagsContainer.innerHTML = checked.map(v =>
+      `<span class="multi-select-tag">${v}<span class="remove-tag" onclick="removeLoadChar(event, '${v}')">×</span></span>`
+    ).join('');
+  }
+}
+
+function removeLoadChar(e, val) {
+  e.stopPropagation();
+  const cb = document.querySelector(`#loadCharsSelect input[value="${val}"]`);
+  if (cb) cb.checked = false;
+  updateLoadChars();
+}
+
+function getLoadCharsValue() {
+  return Array.from(
+    document.querySelectorAll('#loadCharsSelect input[type="checkbox"]:checked')
+  ).map(cb => cb.value);
+}
+
+function clearLoadChars() {
+  document.querySelectorAll('#loadCharsSelect input[type="checkbox"]').forEach(cb => cb.checked = false);
+  updateLoadChars();
+}
+
+// Close multi-select on outside click
+document.addEventListener('click', function(e) {
+  const ms = document.getElementById('loadCharsSelect');
+  if (!ms.contains(e.target)) ms.classList.remove('open');
+});
+
+/* ────────────────────────────── Reset ────────────────────────────── */
+function resetAll() {
+  document.getElementById('partNo').value = '';
+  document.getElementById('partName').value = '';
+  document.getElementById('partL').value = '';
+  document.getElementById('partW').value = '';
+  document.getElementById('partH').value = '';
+  document.getElementById('partWeight').value = '';
+  document.getElementById('partMaxLoad').value = '';
+  clearLoadChars();
+  document.getElementById('partQty').value = '';
+  document.getElementById('batchQty').value = '48';
+  document.getElementById('operator').value = '';
+  removeImage();
+  state.selectedPkgMethod = null;
+  state.scheme = null;
+  state.cost = null;
+  state.loadedParts = 0;
+  state.layoutAlpha = Math.PI / 5;
+  state.layoutBeta  = Math.PI / 7;
+  goStep(1);
+}
+
+/* ────────────────────────────── Project List (localStorage) ────────────────────────────── */
+const PROJECT_KEY = 'pkg_projects';
+
+let currentViewProjectId = null;
+
+function getProjects() {
+  try {
+    return JSON.parse(localStorage.getItem(PROJECT_KEY) || '[]');
+  } catch { return []; }
+}
+
+function saveProject(project) {
+  const list = getProjects();
+  list.unshift(project);
+  localStorage.setItem(PROJECT_KEY, JSON.stringify(list));
+}
+
+function deleteProjectById(id) {
+  const list = getProjects().filter(p => p.id !== id);
+  localStorage.setItem(PROJECT_KEY, JSON.stringify(list));
+}
+
+function formatDate(ts) {
+  const d = new Date(ts);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function openProjectList() {
+  const list = getProjects();
+  const tbody = document.getElementById('projectTableBody');
+  const emptyMsg = document.getElementById('projectListEmpty');
+
+  if (list.length === 0) {
+    emptyMsg.style.display = 'flex';
+    tbody.innerHTML = '';
+  } else {
+    emptyMsg.style.display = 'none';
+    tbody.innerHTML = list.map(p => `
+      <tr>
+        <td><b>${p.partNo}</b></td>
+        <td>${p.partName || '—'}</td>
+        <td>${p.qty} 件</td>
+        <td>${p.methodName}</td>
+        <td><b style="color:var(--primary)">¥${p.perPartCost}</b> /件</td>
+        <td>${(p.loadChars && p.loadChars.length) ? p.loadChars.join('、') : '—'}</td>
+        <td>${formatDate(p.createdAt)}</td>
+        <td>${p.operator || '—'}</td>
+        <td class="col-actions">
+          <button class="btn" style="height:28px;padding:0 10px;font-size:12px" onclick="openProjectDetail(${p.id})">查看</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  document.getElementById('projectListModal').classList.add('open');
+}
+
+function closeProjectList() {
+  document.getElementById('projectListModal').classList.remove('open');
+}
+
+function openProjectDetail(id) {
+  currentViewProjectId = id;
+  const list = getProjects();
+  const p = list.find(x => x.id === id);
+  if (!p) return;
+
+  document.getElementById('projectDetailContent').innerHTML = `
+    <div class="project-detail-item"><span class="label">零件号</span><span class="value">${p.partNo}</span></div>
+    <div class="project-detail-item"><span class="label">零件名称</span><span class="value">${p.partName || '—'}</span></div>
+    <div class="project-detail-item"><span class="label">零件总数</span><span class="value">${p.qty} 件</span></div>
+    <div class="project-detail-item"><span class="label">零件尺寸</span><span class="value">${p.partL}×${p.partW}×${p.partH} mm</span></div>
+    <div class="project-detail-item"><span class="label">单件重量</span><span class="value">${p.weight} kg</span></div>
+    <div class="project-detail-item"><span class="label">单件最大承重</span><span class="value">${p.maxLoad ? p.maxLoad + ' kg' : '—'}</span></div>
+    <div class="project-detail-item"><span class="label">装载特性</span><span class="value">${(p.loadChars && p.loadChars.length) ? p.loadChars.join('、') : '—'}</span></div>
+    <div class="project-detail-item"><span class="label">包装方式</span><span class="value">${p.methodName}</span></div>
+    <div class="project-detail-item"><span class="label">包装材料</span><span class="value">${MATERIAL_PRICES[p.material].name}</span></div>
+    <div class="project-detail-item"><span class="label">包箱尺寸</span><span class="value">${p.pkgL}×${p.pkgW}×${p.pkgH} mm</span></div>
+    <div class="project-detail-item"><span class="label">SNP（每箱件数）</span><span class="value">${p.snp} 件</span></div>
+    <div class="project-detail-item"><span class="label">集装箱</span><span class="value">${p.containerLabel}</span></div>
+    <div class="project-detail-item"><span class="label">空间利用率</span><span class="value">${p.fillRate}%</span></div>
+    <div class="project-detail-item"><span class="label">单件包装成本</span><span class="value" style="color:var(--primary);font-weight:700">¥${p.perPartCost} / 件</span></div>
+    <div class="project-detail-item"><span class="label">单件总成本（含运输）</span><span class="value" style="color:var(--primary);font-weight:700">¥${p.totalPerPart} / 件</span></div>
+    <div class="project-detail-item"><span class="label">经济批次总成本</span><span class="value">¥${p.batchTotalCost}</span></div>
+    <div class="project-detail-item"><span class="label">创建时间</span><span class="value">${formatDate(p.createdAt)}</span></div>
+    <div class="project-detail-item"><span class="label">操作人员</span><span class="value">${p.operator || '—'}</span></div>
+  `;
+
+  closeProjectList();
+  document.getElementById('projectDetailModal').classList.add('open');
+}
+
+function closeProjectDetail() {
+  document.getElementById('projectDetailModal').classList.remove('open');
+  currentViewProjectId = null;
+}
+
+function deleteCurrentProject() {
+  if (!currentViewProjectId) return;
+  if (!confirm('确定要删除这条测算记录吗？')) return;
+  deleteProjectById(currentViewProjectId);
+  closeProjectDetail();
+  openProjectList();
+}
+
+// Close modal when clicking overlay
+document.getElementById('projectListModal').addEventListener('click', function(e) {
+  if (e.target === this) closeProjectList();
+});
+document.getElementById('projectDetailModal').addEventListener('click', function(e) {
+  if (e.target === this) closeProjectDetail();
+});
+
+function saveCurrentToProjectList() {
+  const part = getPartInput();
+  const scheme = state.scheme;
+  if (!scheme) { alert('请先完成成本测算'); return; }
+  if (!part.partNo) { alert('零件号不能为空'); return; }
+
+  const method = scheme.method;
+  const matKey = method.material || part.material;
+  const matInfo = MATERIAL_PRICES[matKey];
+  const surfaceArea = (method.pkgL * method.pkgW + method.pkgL * method.pkgH + method.pkgW * method.pkgH) * 2 / 1e6;
+  const materialCost = surfaceArea * matInfo.surfacePricePerM2;
+  const laborCost = matInfo.laborCost;
+  const antiRustCost = part.antiRust ? 25 : 0;
+  const consumableCost = part.antiRust ? (15 + method.snp * 3) : method.snp * 2;
+  const singlePkgCost = materialCost + laborCost + antiRustCost + consumableCost;
+  const perPartCost = (singlePkgCost / method.snp).toFixed(2);
+
+  const shippingCostPerCtn = state.selectedContainer === '20gp' ? 12000 :
+                              state.selectedContainer === '40gp' ? 18000 : 20000;
+  const shippingPerPart = shippingCostPerCtn / scheme.totalPartsPerCtn;
+  const totalPerPart = (+perPartCost + shippingPerPart).toFixed(2);
+
+  const totalBoxes = scheme.batchesNeeded * scheme.boxesPerCtn;
+  const batchTotalCost = (totalBoxes * singlePkgCost + scheme.batchesNeeded * shippingCostPerCtn).toFixed(0);
+
+  const project = {
+    id: Date.now(),
+    partNo: part.partNo,
+    partName: part.partName,
+    qty: part.qty,
+    partL: part.l, partW: part.w, partH: part.h,
+    weight: part.weight,
+    maxLoad: part.maxLoad,
+    loadChars: part.loadChars,
+    material: part.material,
+    methodName: method.name,
+    snp: method.snp,
+    pkgL: method.pkgL, pkgW: method.pkgW, pkgH: method.pkgH,
+    containerLabel: CONTAINER_SPECS[state.selectedContainer].label,
+    fillRate: (scheme.fillRate * 100).toFixed(1),
+    perPartCost,
+    totalPerPart,
+    batchTotalCost,
+    createdAt: Date.now(),
+    operator: document.getElementById('operator').value.trim() || '',
+  };
+
+  saveProject(project);
+  alert('已保存到项目列表');
+}
+</script>
+
+</body>
+</html>
