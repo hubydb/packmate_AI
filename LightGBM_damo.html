@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LightGBM 训练测试平台</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --primary: #0052d9;
+  --primary-light: #e8f0fe;
+  --success: #2ba471;
+  --danger: #d54941;
+  --warning: #e37318;
+  --gray-1: #1c2435;
+  --gray-2: #4f5d73;
+  --gray-3: #8a94a6;
+  --gray-4: #c0c6d1;
+  --gray-5: #e8ecf0;
+  --gray-6: #f3f5f7;
+  --radius: 8px;
+  --shadow: 0 2px 8px rgba(0,0,0,.08);
+}
+body {
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: var(--gray-1);
+  background: var(--gray-6);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+.header {
+  background: #fff;
+  border-bottom: 1px solid var(--gray-5);
+  padding: 16px 32px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.header h1 { font-size: 18px; font-weight: 600; color: var(--primary); }
+.header .subtitle { font-size: 13px; color: var(--gray-3); }
+.header .badge {
+  padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 500;
+  background: var(--primary-light); color: var(--primary);
+}
+.header .mode-tag {
+  margin-left: auto; padding: 3px 12px; border-radius: 10px;
+  font-size: 12px; font-weight: 600;
+}
+.header .mode-tag.online { background: #e8f8ef; color: #2ba471; }
+.header .mode-tag.offline { background: #fef3e8; color: #e37318; }
+
+.main { max-width: 1100px; margin: 24px auto; padding: 0 24px; }
+
+.card {
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 24px 28px;
+  margin-bottom: 20px;
+}
+.card-title {
+  font-size: 16px; font-weight: 600; margin-bottom: 16px;
+  display: flex; align-items: center; gap: 8px;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 0 20px; height: 36px; border: 1px solid var(--gray-4);
+  border-radius: 4px; font-size: 14px; cursor: pointer; transition: all .2s;
+  background: #fff; color: var(--gray-1);
+}
+.btn:hover { border-color: var(--gray-3); }
+.btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+.btn-primary:hover { background: #0041b3; }
+.btn-success { background: var(--success); color: #fff; border-color: var(--success); }
+.btn-lg { height: 42px; padding: 0 32px; font-size: 15px; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Stat cards */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.stat-card {
+  background: #fff; border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 20px; text-align: center;
+}
+.stat-card .stat-label { font-size: 13px; color: var(--gray-3); margin-bottom: 6px; }
+.stat-card .stat-value { font-size: 28px; font-weight: 700; color: var(--primary); }
+.stat-card.accuracy .stat-value { color: var(--success); }
+.stat-card.highlight { background: var(--primary-light); }
+.stat-card.highlight .stat-value { color: var(--primary); }
+
+/* Progress */
+.progress-area { margin: 20px 0; }
+.progress-bar-wrap {
+  height: 8px; background: var(--gray-5); border-radius: 4px; overflow: hidden; margin: 8px 0;
+}
+.progress-bar-fill {
+  height: 100%; background: var(--primary); border-radius: 4px;
+  transition: width .3s; width: 0%;
+}
+.progress-log {
+  background: var(--gray-6); border-radius: 4px; padding: 12px 16px;
+  font-family: "Courier New", monospace; font-size: 12px;
+  max-height: 200px; overflow-y: auto; color: var(--gray-2);
+  line-height: 1.8;
+}
+.progress-log .log-line { border-bottom: 1px solid var(--gray-5); padding: 2px 0; }
+.progress-log .log-line:last-child { border-bottom: none; }
+.log-info { color: var(--primary); }
+.log-success { color: var(--success); }
+.log-error { color: var(--danger); }
+
+/* Feature importance chart */
+.chart-area {
+  margin-top: 16px; display: flex; flex-direction: column; gap: 8px;
+}
+.chart-bar { display: flex; align-items: center; gap: 12px; }
+.chart-label { font-size: 12px; color: var(--gray-2); min-width: 80px; text-align: right; }
+.chart-track { flex: 1; height: 20px; background: var(--gray-5); border-radius: 4px; overflow: hidden; }
+.chart-fill { height: 100%; background: var(--primary); border-radius: 4px; transition: width .6s; }
+.chart-value { font-size: 12px; color: var(--gray-3); min-width: 60px; }
+
+/* Class accuracy */
+.class-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;
+  margin-top: 12px;
+}
+.class-card {
+  border: 1px solid var(--gray-5); border-radius: var(--radius); padding: 14px 16px;
+}
+.class-card .class-name { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+.class-card .class-acc { font-size: 24px; font-weight: 700; color: var(--success); }
+.class-card .class-count { font-size: 12px; color: var(--gray-3); margin-top: 2px; }
+
+/* Loading spinner */
+.spinner {
+  display: inline-block; width: 16px; height: 16px;
+  border: 2px solid var(--gray-4); border-top-color: var(--primary);
+  border-radius: 50%; animation: spin .8s linear infinite; vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Alert */
+.alert {
+  padding: 12px 16px; border-radius: var(--radius); font-size: 13px;
+  margin-bottom: 16px; display: flex; align-items: flex-start; gap: 8px;
+}
+.alert-info { background: var(--primary-light); color: var(--primary); }
+.alert-error { background: #fef0ef; color: var(--danger); }
+.alert-success { background: #e8f8ef; color: var(--success); }
+
+pre { background: var(--gray-6); padding: 16px; border-radius: 4px; font-size: 12px; overflow-x: auto; }
+
+/* Nav tabs */
+.nav-tabs {
+  display: flex; gap: 4px; border-bottom: 1px solid var(--gray-5); margin-bottom: 20px;
+}
+.nav-tab {
+  padding: 8px 20px; font-size: 14px; cursor: pointer; border: none; background: none;
+  color: var(--gray-3); border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: all .2s;
+}
+.nav-tab:hover { color: var(--gray-1); }
+.nav-tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+.nav-tab:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Feature inputs grid */
+.feat-inputs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.feat-input-group { display: flex; flex-direction: column; gap: 4px; }
+.feat-input-group label { font-size: 12px; color: var(--gray-2); font-weight: 500; }
+.feat-input-group input {
+  height: 32px; padding: 0 10px; border: 1px solid var(--gray-4); border-radius: 4px;
+  font-size: 13px; color: var(--gray-1); outline: none;
+}
+.feat-input-group input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(0,82,217,.12);
+}
+
+/* Prediction result */
+.pred-result-card {
+  background: var(--primary-light);
+  border-radius: var(--radius);
+  padding: 28px;
+  text-align: center;
+  margin: 20px 0;
+}
+.pred-result-card .pred-label { font-size: 14px; color: var(--primary); margin-bottom: 8px; font-weight: 500; }
+.pred-result-card .pred-class { font-size: 48px; font-weight: 800; color: var(--primary); line-height: 1.2; }
+.pred-result-card .pred-confidence { font-size: 16px; color: var(--gray-2); margin-top: 8px; }
+.pred-result-card .pred-confidence strong { color: var(--primary); font-weight: 700; }
+
+.proba-bars { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 16px; }
+.proba-item { display: flex; flex-direction: column; gap: 4px; }
+.proba-item .proba-label { font-size: 13px; color: var(--gray-2); display: flex; justify-content: space-between; }
+.proba-item .proba-track { height: 8px; background: var(--gray-5); border-radius: 4px; overflow: hidden; }
+.proba-item .proba-fill { height: 100%; border-radius: 4px; transition: width .5s; }
+.proba-item .proba-fill.highlight { background: var(--primary); }
+.proba-item .proba-fill.normal { background: var(--gray-4); }
+
+.section-panel { display: none; }
+.section-panel.active { display: block; }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <h1>LightGBM 训练测试平台</h1>
+  <span class="subtitle">基于 train_data.csv 数据集</span>
+  <span class="badge" id="statusBadge">等待训练</span>
+  <span class="mode-tag online" id="modeTag">联网模式</span>
+</header>
+
+<div class="main">
+  <!-- 控制面板 -->
+  <div class="card">
+    <div class="card-title">⚙️ 模型训练控制</div>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+      <button class="btn btn-primary btn-lg" id="trainBtn" onclick="startTraining()">
+        🚀 开始训练
+      </button>
+      <button class="btn" id="resetBtn" onclick="resetAll()" disabled>
+        🔄 重置
+      </button>
+      <button class="btn btn-success" id="downloadStandaloneBtn" onclick="downloadStandalone()" disabled
+        title="生成含模型数据的独立 HTML 文件，下载后可离线使用">
+        💾 下载独立版
+      </button>
+      <span id="trainBtnHint" style="font-size:13px;color:var(--gray-3);margin-left:8px;">
+        点击按钮开始训练，数据集共 4435 条样本
+      </span>
+    </div>
+    <div class="progress-area" id="progressArea" style="display:none;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <span class="spinner" id="trainSpinner"></span>
+        <span id="progressText">正在训练...</span>
+      </div>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-fill" id="progressBar"></div>
+      </div>
+      <div class="progress-log" id="progressLog"></div>
+    </div>
+  </div>
+
+  <!-- 结果区域 -->
+  <div id="resultArea" style="display:none;">
+
+    <!-- 导航 -->
+    <div class="nav-tabs">
+      <button class="nav-tab active" id="tabTrain" onclick="switchTab('train')">📊 训练结果</button>
+      <button class="nav-tab" id="tabPredict" onclick="switchTab('predict')" disabled>🔮 预测</button>
+    </div>
+
+    <!-- 训练结果 Tab -->
+    <div class="section-panel active" id="trainPanel">
+      <div class="stats-grid">
+        <div class="stat-card accuracy highlight">
+          <div class="stat-label">测试集准确率</div>
+          <div class="stat-value" id="statAccuracy">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">测试样本数</div>
+          <div class="stat-value" id="statTestNum">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">训练样本数</div>
+          <div class="stat-value" id="statTrainNum">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">树的数量</div>
+          <div class="stat-value" id="statTrees">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">特征数量</div>
+          <div class="stat-value" id="statFeatures">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">类别数量</div>
+          <div class="stat-value" id="statClasses">—</div>
+        </div>
+      </div>
+
+      <div class="card" id="classAccuracyCard">
+        <div class="card-title">📊 各类别准确率</div>
+        <div class="class-grid" id="classAccuracyGrid"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🌲 特征重要性（Top 15）</div>
+        <div class="alert alert-info" style="margin-bottom:12px;">
+          基于 gain 指标计算，反映各特征对模型预测的贡献度
+        </div>
+        <div class="chart-area" id="featImportanceChart"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="cursor:pointer;" onclick="toggleRawData()">
+          📋 原始训练结果 JSON <span style="font-size:12px;color:var(--gray-3);font-weight:400;">（点击展开）</span>
+        </div>
+        <div id="rawDataArea" style="display:none;">
+          <pre id="rawDataPre"></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- 预测 Tab -->
+    <div class="section-panel" id="predictPanel">
+      <div class="card">
+        <div class="card-title">🔮 手动输入特征进行预测 <span id="predictModeHint" style="font-size:12px;color:var(--gray-3);font-weight:400;"></span></div>
+        <div class="alert alert-info">
+          请输入各特征值（共 <span id="featCountLabel">35</span> 个），系统将基于模型输出预测结果。
+          <br/><span style="font-size:12px;color:var(--gray-3);">提示：点击"自动填充"可从数据集中随机填充一组特征值</span>
+        </div>
+        <div style="margin-bottom:12px;display:flex;gap:10px;">
+          <button class="btn btn-primary" id="autoFillBtn" onclick="autoFillFeatures()">📋 自动填充</button>
+          <button class="btn" id="clearFeatBtn" onclick="clearFeatureInputs()">🗑 清空</button>
+        </div>
+        <div class="feat-inputs-grid" id="featInputsGrid"></div>
+        <div style="display:flex;gap:12px;margin-top:8px;">
+          <button class="btn btn-primary btn-lg" id="predictBtn" onclick="startPrediction()">
+            开始预测
+          </button>
+          <button class="btn btn-lg" id="predictResetBtn" onclick="resetPrediction()">重置</button>
+        </div>
+      </div>
+
+      <div class="card" id="predResultCard" style="display:none;">
+        <div class="card-title">📌 预测结果</div>
+        <div class="pred-result-card" id="predMainResult">
+          <div class="pred-label">预测类别</div>
+          <div class="pred-class" id="predClassValue">—</div>
+          <div class="pred-confidence">置信度：<strong id="predConfidence">—</strong></div>
+        </div>
+        <div class="alert alert-info" style="margin-top:16px;">各类别概率分布</div>
+        <div class="proba-bars" id="probaBars"></div>
+      </div>
+
+      <div class="card" id="predErrorCard" style="display:none;">
+        <div class="alert alert-error" id="predErrorMsg"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 错误信息 -->
+  <div class="card" id="errorCard" style="display:none;">
+    <div class="alert alert-error" id="errorMsg"></div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════
+// 状态
+// ══════════════════════════════════════════════════════════════════════
+let _featureNames = [];
+let _classNames = [];
+let _modelData = null;        // 从服务端加载的模型 JSON
+let _standaloneMode = false;  // 是否为离线模式
+
+// 检测是否已嵌入模型（下载的独立版）
+if (typeof LGBMODEL !== 'undefined') {
+  _modelData = LGBMODEL;
+  _standaloneMode = true;
+  _featureNames = LGBMODEL.feature_names || [];
+  _classNames = LGBMODEL.class_names || [];
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// 工具函数
+// ══════════════════════════════════════════════════════════════════════
+function setStatus(text, state) {
+  const badge = document.getElementById('statusBadge');
+  badge.textContent = text;
+  badge.className = 'badge';
+  if (state === 'ready') badge.style.cssText = 'background:#e8f8ef;color:#2ba471;';
+  else if (state === 'training') badge.style.cssText = 'background:#fef3e8;color:#e37318;';
+  else if (state === 'done') badge.style.cssText = 'background:#e8f8ef;color:#2ba471;';
+  else if (state === 'error') badge.style.cssText = 'background:#fef0ef;color:#d54941;';
+  else badge.style.cssText = '';
+}
+
+function log(msg, type='') {
+  const el = document.getElementById('progressLog');
+  const cls = type ? `log-${type}` : '';
+  el.innerHTML += `<div class="log-line ${cls}">${fmtTime()} ${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+function fmtTime() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+}
+
+function animateProgress(pct, text) {
+  document.getElementById('progressBar').style.width = pct + '%';
+  if (text) document.getElementById('progressText').textContent = text;
+}
+
+function updateModeTag() {
+  const tag = document.getElementById('modeTag');
+  if (_standaloneMode) {
+    tag.textContent = '离线模式';
+    tag.className = 'mode-tag offline';
+  } else {
+    tag.textContent = '联网模式';
+    tag.className = 'mode-tag online';
+  }
+  const hint = document.getElementById('predictModeHint');
+  if (hint) {
+    hint.textContent = _standaloneMode ? '（离线预测，无网络请求）' : '（服务端预测）';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// LightGBM 纯 JS 预测引擎
+// ══════════════════════════════════════════════════════════════════════
+const LGBPredictor = (function() {
+  /**
+   * LightGBM Booster JSON structure:
+   * {
+   *   num_class: N,
+   *   class_names: [...],
+   *   objective: 'multiclass'|'binary',
+   *   feature_names: [...],
+   *   trees: {
+   *     tree_info: [{tree_index, tree_structure: {...}}, ...]
+   *   }
+   * }
+   */
+
+  function predict(model, features) {
+    const numClasses = model.num_classes || 2;
+    const treeInfo = model.trees && model.trees.tree_info ? model.trees.tree_info : [];
+    const isMulti = numClasses > 2;
+
+    // 收集每棵树的 leaf_value
+    const classContribs = new Array(numClasses).fill(0.0);
+
+    for (const treeData of treeInfo) {
+      const tree = treeData.tree_structure;
+      const classIndex = treeData.tree_index;
+      // num_class 棵树循环对应 class 0, class 1, ...
+      // 如果是 binary (numClass=2)，只有 1 棵树，classIndex 0
+      const targetClass = isMulti ? classIndex : 0;
+      if (targetClass >= numClasses) continue;
+
+      const leafValue = getLeafValue(tree, features);
+      classContribs[targetClass] += leafValue;
+    }
+
+    // 转换为概率（softmax for multiclass, sigmoid for binary）
+    if (isMulti) {
+      // softmax
+      const maxC = Math.max(...classContribs);
+      const exps = classContribs.map(c => Math.exp(c - maxC));
+      const sumExp = exps.reduce((a, b) => a + b, 0);
+      const probs = exps.map(e => e / sumExp);
+      return { probs, predictedClassIdx: probs.indexOf(Math.max(...probs)) };
+    } else {
+      // sigmoid
+      const sigmoid = 1.0 / (1.0 + Math.exp(-classContribs[0]));
+      return { probs: [1.0 - sigmoid, sigmoid], predictedClassIdx: sigmoid > 0.5 ? 1 : 0 };
+    }
+  }
+
+  function getLeafValue(node, features) {
+    // 内部节点
+    if (node.left_child !== undefined && node.right_child !== undefined) {
+      const featVal = features[node.split_feature];
+      // NaN 或 undefined 均视为缺失值，走左子节点
+      if (featVal === undefined || isNaN(featVal)) {
+        return getLeafValue(node.left_child, features);
+      }
+      if (featVal <= node.threshold) {
+        return getLeafValue(node.left_child, features);
+      } else {
+        return getLeafValue(node.right_child, features);
+      }
+    }
+    // 叶子节点
+    return node.leaf_value !== undefined ? node.leaf_value : 0.0;
+  }
+
+  return { predict };
+})();
+
+// ══════════════════════════════════════════════════════════════════════
+// 训练
+// ══════════════════════════════════════════════════════════════════════
+async function startTraining() {
+  const btn = document.getElementById('trainBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  btn.disabled = true;
+  resetBtn.disabled = true;
+  document.getElementById('resultArea').style.display = 'none';
+  document.getElementById('errorCard').style.display = 'none';
+  document.getElementById('progressArea').style.display = 'block';
+  document.getElementById('progressLog').innerHTML = '';
+
+  setStatus('训练中...', 'training');
+  log('开始请求训练接口...', 'info');
+
+  let fakePct = 0;
+  const fakeTimer = setInterval(() => {
+    fakePct = Math.min(fakePct + Math.random() * 5, 85);
+    animateProgress(fakePct, `正在训练 LightGBM（${Math.round(fakePct)}%）...`);
+  }, 800);
+
+  try {
+    const resp = await fetch('/api/train', { method: 'POST' });
+    clearInterval(fakeTimer);
+    animateProgress(100, '训练完成！');
+
+    const data = await resp.json();
+
+    if (!data.success) {
+      log('❌ 训练失败: ' + data.error, 'error');
+      setStatus('训练失败', 'error');
+      document.getElementById('errorCard').style.display = 'block';
+      document.getElementById('errorMsg').textContent = '错误: ' + data.error;
+      btn.disabled = false;
+      return;
+    }
+
+    log('✅ 训练成功！开始加载模型...', 'success');
+
+    // 如果是联网模式，加载模型 JSON
+    if (!_standaloneMode) {
+      log('获取模型数据（供离线预测）...', 'info');
+      try {
+        const modelResp = await fetch('/api/model');
+        const modelJson = await modelResp.json();
+        if (modelJson.success) {
+          _modelData = modelJson.data;
+          _featureNames = _modelData.feature_names || [];
+          _classNames = _modelData.class_names || [];
+          log('✅ 模型数据已加载，可下载独立版', 'success');
+          document.getElementById('downloadStandaloneBtn').disabled = false;
+        }
+      } catch (e) {
+        log('⚠ 模型数据加载失败（' + e.message + '），无法下载独立版', 'error');
+      }
+    }
+
+    log('✅ 全部完成！', 'success');
+    renderResult(data.data);
+    setStatus('训练完成', 'done');
+    document.getElementById('resultArea').style.display = 'block';
+    resetBtn.disabled = false;
+    btn.disabled = false;
+    document.getElementById('tabPredict').disabled = false;
+
+    buildFeatureInputs();
+    updateModeTag();
+
+  } catch (e) {
+    clearInterval(fakeTimer);
+    log('❌ 网络错误: ' + e.message, 'error');
+    setStatus('网络错误', 'error');
+    document.getElementById('errorCard').style.display = 'block';
+    document.getElementById('errorMsg').textContent = '请求失败: ' + e.message;
+    btn.disabled = false;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// 渲染训练结果
+// ══════════════════════════════════════════════════════════════════════
+function renderResult(data) {
+  document.getElementById('statAccuracy').textContent = data.accuracy_pct;
+  document.getElementById('statTestNum').textContent = data.num_test + ' 条';
+  document.getElementById('statTrainNum').textContent = data.num_train + ' 条';
+  document.getElementById('statTrees').textContent = data.num_trees;
+  document.getElementById('statFeatures').textContent = data.num_features + ' 个';
+  document.getElementById('statClasses').textContent = data.num_classes + ' 类';
+
+  document.getElementById('featCountLabel').textContent = _featureNames.length;
+
+  const grid = document.getElementById('classAccuracyGrid');
+  if (data.per_class_accuracy && data.per_class_accuracy.length > 0) {
+    grid.innerHTML = data.per_class_accuracy.map(c =>
+      `<div class="class-card">
+        <div class="class-name">类别 ${c.class}</div>
+        <div class="class-acc">${(c.accuracy * 100).toFixed(1)}%</div>
+        <div class="class-count">样本数: ${c.count}</div>
+      </div>`
+    ).join('');
+    document.getElementById('classAccuracyCard').style.display = 'block';
+  }
+
+  const maxScore = data.feature_importance[0]?.[1] || 1;
+  const chart = document.getElementById('featImportanceChart');
+  chart.innerHTML = data.feature_importance.map(([name, score]) => {
+    const pct = (score / maxScore * 100).toFixed(1);
+    return `<div class="chart-bar">
+      <span class="chart-label">${name}</span>
+      <div class="chart-track"><div class="chart-fill" style="width:${pct}%"></div></div>
+      <span class="chart-value">${score.toFixed(1)}</span>
+    </div>`;
+  }).join('');
+
+  document.getElementById('rawDataPre').textContent = JSON.stringify(data, null, 2);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// 特征输入
+// ══════════════════════════════════════════════════════════════════════
+function buildFeatureInputs() {
+  const grid = document.getElementById('featInputsGrid');
+  grid.innerHTML = _featureNames.map((name, i) =>
+    `<div class="feat-input-group">
+      <label for="feat${i}">${name}</label>
+      <input type="number" id="feat${i}" placeholder="请输入数值" step="any" />
+    </div>`
+  ).join('');
+}
+
+async function autoFillFeatures() {
+  try {
+    const resp = await fetch('/train_data.csv');
+    const text = await resp.text();
+    const lines = text.trim().split('\n').slice(1);
+    if (lines.length === 0) return;
+    const randomIdx = Math.floor(Math.random() * lines.length);
+    const values = lines[randomIdx].split(',');
+    const featValues = values.slice(0, _featureNames.length);
+    featValues.forEach((v, i) => {
+      const el = document.getElementById('feat' + i);
+      if (el) el.value = v;
+    });
+  } catch (e) {
+    clearFeatureInputs();
+  }
+}
+
+function clearFeatureInputs() {
+  _featureNames.forEach((_, i) => {
+    const el = document.getElementById('feat' + i);
+    if (el) el.value = '';
+  });
+}
+
+function getFeatureValues() {
+  const features = [];
+  for (let i = 0; i < _featureNames.length; i++) {
+    const el = document.getElementById('feat' + i);
+    const val = el ? el.value.trim() : '';
+    if (val === '') {
+      features.push(NaN);  // 空值走缺失值逻辑
+    } else {
+      const v = parseFloat(val);
+      if (isNaN(v)) return null;  // 非空但不是有效数字才报错
+      features.push(v);
+    }
+  }
+  return features;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// 预测
+// ══════════════════════════════════════════════════════════════════════
+async function startPrediction() {
+  const features = getFeatureValues();
+  if (features === null) {
+    document.getElementById('predErrorCard').style.display = 'block';
+    document.getElementById('predErrorMsg').textContent = '请检查输入：非空项必须为有效数字';
+    return;
+  }
+
+  document.getElementById('predResultCard').style.display = 'none';
+  document.getElementById('predErrorCard').style.display = 'none';
+  const btn = document.getElementById('predictBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> 预测中...';
+
+  try {
+    let result;
+    if (_standaloneMode && _modelData) {
+      // 纯前端预测（features 中可能有 NaN，由预测引擎处理）
+      result = LGBPredictor.predict(_modelData, features);
+      const predIdx = result.predictedClassIdx;
+      const className = _classNames[predIdx] || String(predIdx);
+      const confidence = result.probs[predIdx];
+
+      result = {
+        predicted_class: className,
+        predicted_class_idx: predIdx,
+        confidence: Math.round(confidence * 100, 2),
+        probability: result.probs[predIdx],
+        all_probabilities: _classNames.map((cn, i) => ({
+          class: cn,
+          probability: result.probs[i],
+        })),
+      };
+    } else {
+      // 服务端预测（NaN 转 None 传给 Flask）
+      const featuresForServer = features.map(v => (isNaN(v) ? null : v));
+      const resp = await fetch('/api/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ features: featuresForServer }),
+      });
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.error);
+      result = data.data;
+    }
+
+    renderPredictionResult(result);
+  } catch (e) {
+    document.getElementById('predErrorCard').style.display = 'block';
+    document.getElementById('predErrorMsg').textContent = '预测失败: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '开始预测';
+  }
+}
+
+function renderPredictionResult(result) {
+  document.getElementById('predClassValue').textContent = result.predicted_class;
+  document.getElementById('predConfidence').textContent = result.confidence + '%';
+
+  const maxProb = Math.max(...result.all_probabilities.map(p => p.probability));
+  const barsEl = document.getElementById('probaBars');
+  barsEl.innerHTML = result.all_probabilities.map(p => {
+    const pct = (p.probability / maxProb * 100).toFixed(1);
+    const isPredicted = String(p['class']) === String(result.predicted_class);
+    return `<div class="proba-item">
+      <div class="proba-label">
+        <span>类别 ${p['class']}</span>
+        <span>${(p.probability * 100).toFixed(1)}%</span>
+      </div>
+      <div class="proba-track">
+        <div class="proba-fill ${isPredicted ? 'highlight' : 'normal'}" style="width:${pct}%"></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('predResultCard').style.display = 'block';
+}
+
+function resetPrediction() {
+  clearFeatureInputs();
+  document.getElementById('predResultCard').style.display = 'none';
+  document.getElementById('predErrorCard').style.display = 'none';
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// Tab 切换
+// ══════════════════════════════════════════════════════════════════════
+function switchTab(tab) {
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab' + (tab === 'train' ? 'Train' : 'Predict')).classList.add('active');
+  document.getElementById('trainPanel').style.display = tab === 'train' ? 'block' : 'none';
+  document.getElementById('predictPanel').style.display = tab === 'predict' ? 'block' : 'none';
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// 下载独立版
+// ══════════════════════════════════════════════════════════════════════
+async function downloadStandalone() {
+  const btn = document.getElementById('downloadStandaloneBtn');
+  if (!_modelData) {
+    alert('模型数据尚未加载，请先完成训练');
+    return;
+  }
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> 生成中...';
+  try {
+    // 使用纯预测版（不含训练 UI）
+    const resp = await fetch('/api/standalone-predict-only');
+    if (!resp.ok) throw new Error('生成失败');
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'LightGBM_predict.html';
+    a.click();
+    URL.revokeObjectURL(url);
+    log('✅ 独立预测版已下载，可完全离线运行', 'success');
+  } catch (e) {
+    log('❌ 下载失败: ' + e.message, 'error');
+    alert('下载失败: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '💾 下载独立版';
+  }
+}
+
+function toggleRawData() {
+  const area = document.getElementById('rawDataArea');
+  area.style.display = area.style.display === 'none' ? 'block' : 'none';
+}
+
+function resetAll() {
+  document.getElementById('resultArea').style.display = 'none';
+  document.getElementById('errorCard').style.display = 'none';
+  document.getElementById('progressArea').style.display = 'none';
+  resetPrediction();
+  setStatus(_standaloneMode ? '模型已加载（离线）' : '等待训练', _standaloneMode ? 'done' : '');
+  document.getElementById('trainBtn').disabled = _standaloneMode;
+  document.getElementById('resetBtn').disabled = true;
+  document.getElementById('downloadStandaloneBtn').disabled = true;
+  document.getElementById('tabPredict').disabled = true;
+  _modelData = null;
+  _featureNames = _standaloneMode ? (typeof LGBMODEL !== 'undefined' ? LGBMODEL.feature_names : []) : [];
+  _classNames = _standaloneMode ? (typeof LGBMODEL !== 'undefined' ? LGBMODEL.class_names : []) : [];
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// 初始化
+// ══════════════════════════════════════════════════════════════════════
+if (_standaloneMode) {
+  setStatus('模型已加载（离线）', 'done');
+  buildFeatureInputs();
+  updateModeTag();
+  switchTab('predict');
+  document.getElementById('resultArea').style.display = 'block';
+  document.getElementById('trainBtn').disabled = true;
+  document.getElementById('tabPredict').disabled = false;
+  document.getElementById('navTabs').style.cssText = 'display:flex;';
+  document.getElementById('trainBtnHint').textContent = '独立版：模型已内嵌，可直接进行预测';
+  log('✅ 离线模式：模型已加载，共 ' + _featureNames.length + ' 个特征', 'success');
+} else {
+  setStatus('就绪', 'ready');
+}
+document.getElementById('resetBtn').disabled = true;
+</script>
+
+</body>
+</html>
