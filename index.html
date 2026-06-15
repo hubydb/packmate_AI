@@ -1843,20 +1843,30 @@ function drawPkgPreview(method, part) {
   const H = canvas.height;
   ctx.clearRect(0, 0, W, H);
 
-  // ── Outer box dimensions (packaging, including cushion) ──
+  // ── Outer box dimensions (packaging box internal dimensions) ──
   const oL = method.pkgL;
   const oW = method.pkgW;
   const oH = method.pkgH;
 
-  // ── Inner part dimensions ──
-  // Reverse-calculate: outer = part + 2*(buffer+tolerance)
-  const gap = 2 * (part.buffer + part.tolerance);
-  const iL = Math.max(1, oL - gap);
-  const iW = Math.max(1, oW - gap);
-  const iH = Math.max(1, oH - gap);
+  // Buffer offset (cushion gap on each side between part and box wall)
+  const off = part.buffer;
 
-  // Inner part offset from outer box inner wall (the cushion gap on each side / 2)
-  const off = (part.buffer + part.tolerance);
+  // Part dimensions including buffer (same as used in calcSNP)
+  const pL = part.l + 2 * off;
+  const pW = part.w + 2 * off;
+  const pH = part.h + 2 * off;
+
+  // Hard constraint: ensure part with buffer fits inside box
+  // If not, scale down for visualization only (should not happen if computePkgMethods validated correctly)
+  const scaleDownX = pL > oL ? (oL - 1) / pL : 1;
+  const scaleDownY = pH > oH ? (oH - 1) / pH : 1;
+  const scaleDownZ = pW > oW ? (oW - 1) / pW : 1;
+  const scaleDown = Math.min(scaleDownX, scaleDownY, scaleDownZ, 1);
+
+  // Visual part dimensions (after scaleDown)
+  const iL = pL * scaleDown;
+  const iW = pW * scaleDown;
+  const iH = pH * scaleDown;
 
   const alpha = state.previewAlpha || Math.PI / 5;
   const beta  = state.previewBeta  || Math.PI / 4;
@@ -2023,16 +2033,20 @@ function drawPkgPreview(method, part) {
     const visParts = [];
 
     const totalPartsToShow = Math.min(snp, cols * rows);
-    const gapX = oL - cols * iL - 2 * off; // remaining gap distributed
-    const gapY = oH - rows * iH - 2 * off;
-    const partGapX = gapX / (cols + 1); // cushion between parts in X
-    const partGapY = gapY / (rows + 1); // cushion between parts in Y
+
+    // Calculate layout: items placed flush against box walls on all sides (buffer only at edges)
+    // Remaining space after placing cols items in X and rows items in Y is distributed as edge buffers
+    // Constraint: cols*iL + 2*edgeGapX = oL  => edgeGapX = (oL - cols*iL) / 2
+    const edgeGapX = (oL - cols * iL) / 2;
+    const edgeGapY = (oH - rows * iH) / 2;
 
     for (let p = 0; p < totalPartsToShow; p++) {
       const row = Math.floor(p / cols);
       const col = p % cols;
-      const px = off + partGapX + col * (iL + partGapX);
-      const py = off + partGapY + row * (iH + partGapY);
+      // Position each part with equal edge gaps on both sides (items flush against each other)
+      const px = edgeGapX + col * iL;
+      const py = edgeGapY + row * iH;
+      // All parts at same Z depth (2D projection, stacking shown via rows/cols)
       const pz = off;
       const pal = partPalettes[p % partPalettes.length];
 
@@ -2064,8 +2078,8 @@ function drawPkgPreview(method, part) {
     for (let p = 0; p < totalPartsToShow; p++) {
       const row = Math.floor(p / cols);
       const col = p % cols;
-      const px = off + partGapX + col * (iL + partGapX);
-      const py = off + partGapY + row * (iH + partGapY);
+      const px = edgeGapX + col * iL;
+      const py = edgeGapY + row * iH;
       const pz = off;
       const v = [
         pt(px,py,pz), pt(px+iL,py,pz), pt(px+iL,py,pz+iW), pt(px,py,pz+iW),
