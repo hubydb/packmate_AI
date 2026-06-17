@@ -834,11 +834,11 @@ body {
       <div class="form-grid">
         <div class="form-group">
           <label>单件包装缓冲厚度 (mm)</label>
-          <input type="number" id="bufferThickness" value="30" min="0" />
+          <input type="number" id="bufferThickness" value="0" min="0" />
         </div>
         <div class="form-group">
           <label>形变公差 (mm)</label>
-          <input type="number" id="deformationTol" value="5" min="0" />
+          <input type="number" id="deformationTol" value="0" min="0" />
         </div>
         <div class="form-group">
           <label>包装材料</label>
@@ -1120,8 +1120,8 @@ function getPartInput() {
   const loadChars = getLoadCharsValue();
   const qty = parseInt(document.getElementById('partQty').value) || 0;
   const batchQty = parseInt(document.getElementById('batchQty').value) || 48;
-  const buffer = parseFloat(document.getElementById('bufferThickness').value) || 30;
-  const tolerance = parseFloat(document.getElementById('deformationTol').value) || 5;
+  const buffer = parseFloat(document.getElementById('bufferThickness').value);
+  const tolerance = parseFloat(document.getElementById('deformationTol').value);
   const material = document.getElementById('pkgMaterial').value;
   const antiRust = document.getElementById('antiRust').value === 'yes';
   const ctnSpec = CONTAINER_SPECS[state.selectedContainer];
@@ -1146,27 +1146,63 @@ function computePkgMethods(part) {
   const loadChars = part.loadChars || [];
   const isFragile = loadChars.includes('易碎');
 
-  // 零件含缓冲的尺寸
-  const pL = part.l + 2 * part.buffer;
-  const pW = part.w + 2 * part.buffer;
-  const pH = part.h + 2 * part.buffer;
+  // 零件含缓冲+公差的尺寸
+  const pL = part.l + 2 * part.buffer + 2 * (part.tolerance || 0);
+  const pW = part.w + 2 * part.buffer + 2 * (part.tolerance || 0);
+  const pH = part.h + 2 * part.buffer + 2 * (part.tolerance || 0);
 
   // ── 包装件数 SNP 计算：py3dbp 贪婪首次适应（First Fit Decreasing）──
   // 策略：按体积从大到小尝试放置每个零件，每次选择"最紧"（剩余体积最小）的空格
   // 空格分解正确：将已占用的格子分成最多7个不重叠的剩余区域
   function calcSNP(boxL, boxW, boxH) {
-    // 朝向: [沿X轴占用, 沿Y轴占用, 沿Z轴占用, 标签]
-    const orientations = [
-      { d: [pL, pW, pH], label: 'flat' },
-    ];
-    if (!loadChars.includes('不可倒置')) {
-      orientations.push(
-        { d: [pW, pL, pH], label: 'rot-y' },
-        { d: [pH, pW, pL], label: 'rot-x' },
-        { d: [pW, pH, pL], label: 'rot-z' },
-        { d: [pL, pH, pW], label: 'flip-y' },
-        { d: [pH, pL, pW], label: 'flip-x' },
-      );
+    // ── 生成 3D 朝向集合 ─────────────────────────────────────────────────
+    // 零件: pL(长) × pW(宽) × pH(高)，不可倒置时 pH 始终沿容器 Z 轴（保持不倒）
+    //
+    // 不可倒置: 6 种朝向——pH 固定沿 Z，pL/pW 在 XY 平面内自由分配，共 6 种
+    //   [pL,pW,pH] flat     [pW,pL,pH] rot-z     [pH,pW,pL] flip-x
+    //   [pH,pL,pW] rot-x    [pL,pH,pW] flip-y    [pW,pH,pL] rot-y
+    // 完全不受限: 6 种轴排列（3!）各 × 4 种绕轴旋转 = 24 种朝向
+
+    const hasNoFlip = loadChars.includes('不可倒置');
+    let orientations;
+
+    if (hasNoFlip) {
+      // pH 固定沿容器 Z 轴；pL/pW 可交换；pH 可替代 pL 或 pW 沿 X 或 Y
+      orientations = [
+        { d: [pL, pW, pH], label: '平放' },
+        { d: [pW, pL, pH], label: '侧放（Z轴）' },
+        { d: [pH, pW, pL], label: 'X翻转' },
+        { d: [pH, pL, pW], label: 'X翻转+旋转' },
+        { d: [pL, pH, pW], label: 'Y翻转' },
+        { d: [pW, pH, pL], label: 'Y翻转+旋转' },
+      ];
+    } else {
+      // 完全自由：24 种 3D 朝向
+      const dims = [pL, pW, pH];
+      const oLabels = [
+        '平放', 'XY换向', 'XZ换向', 'XYZ换向',
+        'XZ换向', 'YXZ换向', 'YZ换向', 'Z轴180',
+        'XY换向', 'YX换向', 'YZ换向', 'Z轴180',
+        'YZ换向', 'ZYX换向', 'ZX换向', 'Z轴180',
+        'ZX换向', 'YZX换向', 'YX换向', 'Z轴180',
+        'XYZ换向', 'ZXY换向', 'YZW换向', 'Z轴180',
+      ];
+      orientations = [];
+      // 6 种基础排列，各生成 4 种绕轴旋转（共 24 种）
+      // 排列: 沿 (X,Y,Z) = (dims[ai], dims[bi], dims[ci])
+      const perms = [[0,1,2],[0,2,1],[1,0,2],[1,2,0],[2,0,1],[2,1,0]];
+      for (let pi = 0; pi < perms.length; pi++) {
+        const [ai, bi, ci] = perms[pi];
+        // 4 种旋转：0°/90°/180°/270° 绕 ci 轴
+        // 0°: (dims[ai], dims[bi], dims[ci])
+        orientations.push({ d: [dims[ai], dims[bi], dims[ci]], label: oLabels[pi * 4] });
+        // 90°: 沿 ci 轴旋转90° → (dims[bi], dims[ai], dims[ci])
+        orientations.push({ d: [dims[bi], dims[ai], dims[ci]], label: oLabels[pi * 4 + 1] });
+        // 180°: (dims[ci], dims[bi], dims[ai])
+        orientations.push({ d: [dims[ci], dims[bi], dims[ai]], label: oLabels[pi * 4 + 2] });
+        // 270°: (dims[bi], dims[ci], dims[ai])
+        orientations.push({ d: [dims[bi], dims[ci], dims[ai]], label: oLabels[pi * 4 + 3] });
+      }
     }
 
     const viable = orientations.filter(o => o.d[0] <= boxL && o.d[1] <= boxW && o.d[2] <= boxH);
@@ -1175,7 +1211,7 @@ function computePkgMethods(part) {
     // 空格 {x, y, z, l, w, h}: 左下前角起点 + 尺寸
     let gaps = [{ x: 0, y: 0, z: 0, l: boxL, w: boxW, h: boxH }];
     const placed = [];  // {x, y, z, d:[dX,dY,dZ], orient}
-    const MAX = 500;
+    const MAX = 100000;
 
     // ── 放置循环：每次找最佳空格 × 朝向组合 ──
     for (let iter = 0; iter < MAX; iter++) {
@@ -1186,9 +1222,8 @@ function computePkgMethods(part) {
         for (const gap of gaps) {
           if (dX > gap.l || dY > gap.w || dZ > gap.h) continue;
           // Heuristic: 放入后剩余体积越小越好（同尺寸零件=最紧填充）
-          const remVol = (gap.l - dX) * gap.w * gap.h
-                       + gap.l * (gap.w - dY) * gap.h
-                       + gap.l * gap.w * (gap.h - dZ);
+          // 正确：剩余体积 = 空格自身体积 - 零件体积（避免交集重复计算）
+          const remVol = gap.l * gap.w * gap.h - dX * dY * dZ;
           // Tiebreak: 更靠前(LBf) → x小 → y小 → z小
           const score = remVol * 1e9 + gap.x * 1e6 + gap.y * 1e3 + gap.z;
           if (score < bestScore) { bestScore = score; bestGap = gap; bestOrient = orient; }
@@ -1241,19 +1276,45 @@ function computePkgMethods(part) {
       gaps = filtered;
     }
 
-    // 统计主朝向和可视化用网格数
-    const cnt = {};
-    for (const p of placed) cnt[p.orient] = (cnt[p.orient] || 0) + 1;
-    let primary = 'flat', mx = 0;
-    for (const [o, c] of Object.entries(cnt)) { if (c > mx) { mx = c; primary = o; } }
+    // ── 检查是否有更好的朝向网格 ───────────────────────────────────────────
+    // 找出所有朝向中"理论网格数"最大的朝向（nx×ny×nz）
+    let bestGridSnp = 0, bestGridOrient = viable[0];
+    for (const o of viable) {
+      const [dX, dY, dZ] = o.d;
+      const gnx = Math.floor(boxL / dX);
+      const gny = Math.floor(boxW / dY);
+      const gnz = Math.floor(boxH / dZ);
+      const gsnp = gnx * gny * gnz;
+      if (gsnp > bestGridSnp) { bestGridSnp = gsnp; bestGridOrient = o; }
+    }
 
-    const po = viable.find(o => o.label === primary) || viable[0];
-    const [dX, dY, dZ] = po.d;
-    const nx = Math.max(1, Math.floor(boxL / dX));
-    const ny = Math.max(1, Math.floor(boxW / dY));
-    const nz = Math.max(1, Math.floor(boxH / dZ));
+    // 如果 FFD 结果 < 最佳网格数，说明 FFD 产生了碎片空格未填满，
+    // 用最佳网格数替代（对于整除情况，FFD 不一定是最优的）
+    let snp, primaryOrient, nx, ny, nz;
+    if (placed.length < bestGridSnp) {
+      // 取最佳朝向
+      const [dX, dY, dZ] = bestGridOrient.d;
+      nx = Math.max(1, Math.floor(boxL / dX));
+      ny = Math.max(1, Math.floor(boxW / dY));
+      nz = Math.max(1, Math.floor(boxH / dZ));
+      snp = bestGridSnp;
+      primaryOrient = bestGridOrient.label;
+    } else {
+      // 统计主朝向和可视化用网格数
+      const cnt = {};
+      for (const p of placed) cnt[p.orient] = (cnt[p.orient] || 0) + 1;
+      let primary = '平放', mx = 0;
+      for (const [o, c] of Object.entries(cnt)) { if (c > mx) { mx = c; primary = o; } }
+      const po = viable.find(o => o.label === primary) || viable[0];
+      const [dX, dY, dZ] = po.d;
+      nx = Math.max(1, Math.floor(boxL / dX));
+      ny = Math.max(1, Math.floor(boxW / dY));
+      nz = Math.max(1, Math.floor(boxH / dZ));
+      snp = placed.length;
+      primaryOrient = primary;
+    }
 
-    return { snp: placed.length, orientation: primary, nx, ny, nz };
+    return { snp, orientation: primaryOrient, nx, ny, nz };
   }
 
   // ── Helper: evaluate one box spec ──
@@ -1284,8 +1345,9 @@ function computePkgMethods(part) {
       return null;
     }
 
-    // 易碎件：仅允许平放（Z=原H最小边朝上）和 rot-z（侧放），且多件时不允许有上下叠层风险
-    if (isFragile && snp > 1 && orientation !== 'flat' && orientation !== 'rot-z') {
+    // 易碎件：仅允许 pH 沿 Z 轴朝上的朝向（即 pH 保持在箱子高度方向，不翻转）
+    // pH 沿 Z 的安全朝向：平放 [pL,pW,pH]、侧放（Z轴）[pW,pL,pH]
+    if (isFragile && snp > 1 && orientation !== '平放' && orientation !== '侧放（Z轴）') {
       return null;
     }
 
@@ -1302,7 +1364,7 @@ function computePkgMethods(part) {
     const containerFillRate = usedVol / containerVol;
 
     // ── py3dbp 核心：包箱本身的空间利用率（零件占用体积 / 包箱内部体积）──
-    const partVol = part.l * part.w * part.h;
+    const partVol = pL * pW * pH;  // 与 calcSNP 一致：用含缓冲+公差的尺寸
     const boxVol = pkgL * pkgW * pkgH;
     const fillRate = (snp * partVol) / boxVol;  // 优先：包箱本身装满程度
 
@@ -1318,8 +1380,16 @@ function computePkgMethods(part) {
     const singlePkgCost = materialCost + laborCost + antiRustCost + consumableCost;
 
     const orientationLabels = {
-      'flat': '平放', 'rot-x': '立放（绕X轴）', 'rot-y': '旋转（绕Y轴）',
-      'rot-z': '侧放（绕Z轴）', 'flip-x': '翻转（绕X轴）', 'flip-y': '翻转（绕Y轴）', 'side': '侧放', 'stack': '叠放'
+      '平放': '平放', '侧放（Z轴）': '侧放（Z轴）',
+      'X翻转': 'X翻转', 'X翻转+旋转': 'X翻转+旋转',
+      'Y翻转': 'Y翻转', 'Y翻转+旋转': 'Y翻转+旋转',
+      'XY换向': 'XY换向', 'XZ换向': 'XZ换向', 'XYZ换向': 'XYZ换向',
+      'YXZ换向': 'YXZ换向', 'YZ换向': 'YZ换向', 'Z轴180': 'Z轴180',
+      'ZYX换向': 'ZYX换向', 'ZX换向': 'ZX换向', 'YZX换向': 'YZX换向',
+      'ZXY换向': 'ZXY换向', 'flat': '平放', 'rot-x': '立放（绕X轴）',
+      'rot-y': '旋转（绕Y轴）', 'rot-z': '侧放（绕Z轴）',
+      'flip-x': '翻转（绕X轴）', 'flip-y': '翻转（绕Y轴）',
+      'side': '侧放', 'stand': '立放', 'stack': '叠放'
     };
 
     return {
@@ -1404,7 +1474,12 @@ function goStep2() {
   state.currentPart = part;
   state.pkgMethods = computePkgMethods(part);
   if (!state.pkgMethods || state.pkgMethods.length === 0) {
-    alert('无法为此零件推荐包装方式，可能零件尺寸超出所有包箱规格，请尝试减小缓冲厚度或检查尺寸输入。');
+    const hasNoFlip = (part.loadChars || []).includes('不可倒置');
+    let hint = '请检查：零件尺寸（含缓冲+公差）是否超出所有包箱内尺寸，或重量是否超出限制。';
+    if (hasNoFlip) {
+      hint = '该零件设置了"不可倒置"，但其尺寸在所有包箱中均无法以平放方式装入。请尝试：①调换长/宽赋值；②去除"不可倒置"特性；③使用更大规格的包箱。';
+    }
+    alert('无法为此零件推荐包装方式。' + hint);
     return;
   }
   state.selectedPkgMethod = state.pkgMethods[0].id; // default: highest fill rate
@@ -2239,6 +2314,45 @@ function drawPkgPreview(method, part) {
       }
     });
 
+    // ── First part dimension annotations ──
+    // Part is at (off, off, off) with visual size (iL, iW, iH) = (pL*scaleDown, pW*scaleDown, pH*scaleDown)
+    // We annotate with the *actual* mm values: part.l, part.w, part.h
+    const sOff = 14;
+    function drawS1DimArrow(p1, p2, label, perpOff, offsetVec) {
+      const [ox, oy, oz] = offsetVec;
+      const sp = pt(p1[0] + ox, p1[1] + oy, p1[2] + oz);
+      const ep = pt(p2[0] + ox, p2[1] + oy, p2[2] + oz);
+      const dx = ep.px - sp.px, dy = ep.py - sp.py;
+      const len = Math.hypot(dx, dy) || 1;
+      const npx = -dy / len, npy = dx / len;
+      ctx.strokeStyle = '#c0392b';
+      ctx.lineWidth = 1.3;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(sp.px, sp.py);
+      ctx.lineTo(ep.px, ep.py);
+      ctx.stroke();
+      const angle = Math.atan2(dy, dx);
+      const headLen = 7;
+      ctx.beginPath();
+      ctx.moveTo(ep.px, ep.py);
+      ctx.lineTo(ep.px - headLen * Math.cos(angle - Math.PI / 6), ep.py - headLen * Math.sin(angle - Math.PI / 6));
+      ctx.moveTo(ep.px, ep.py);
+      ctx.lineTo(ep.px - headLen * Math.cos(angle + Math.PI / 6), ep.py - headLen * Math.sin(angle + Math.PI / 6));
+      ctx.stroke();
+      const midPx = (sp.px + ep.px) / 2 + perpOff * npx;
+      const midPy = (sp.py + ep.py) / 2 + perpOff * npy;
+      ctx.fillStyle = '#c0392b';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(label, midPx, midPy);
+      ctx.textAlign = 'left';
+      ctx.setLineDash([]);
+    }
+    drawS1DimArrow([off, off, off], [off + iL, off, off], `${part.l}mm`, sOff, [0, -3, -3]);
+    drawS1DimArrow([off, off, off], [off, off, off + iW], `${part.w}mm`, sOff, [-3, -3, 0]);
+    drawS1DimArrow([off, off, off], [off, off + iH, off], `${part.h}mm`, sOff, [-3, 0, -3]);
+
   } else {
     // ── Multi-part: 3D py3dbp grid packing ──
     // Infer orientation from method.nx/ny/nz pattern to map iL/iW/iH correctly to gX/gY/gZ
@@ -2327,6 +2441,57 @@ function drawPkgPreview(method, part) {
     ctx.textAlign = 'center';
     ctx.fillText(`SNP = ${snp}  (${gX}×${gY}×${gZ} 网格)`, labelPt.px, labelPt.py - 4);
     ctx.textAlign = 'left';
+
+    // ── First part dimension annotations ──
+    // Part 1 at (off, off, off), size (partVisL × partVisH × partVisW)
+    const fpx1 = off, fpy1 = off, fpz1 = off;
+    const fpx2 = off + partVisL, fpy2 = off + partVisH, fpz2 = off + partVisW;
+    const arrowOff = 14; // pixel offset outward from part edges
+
+    function drawPartDimArrow(p1, p2, label, perpOff, offsetVec) {
+      // Shift both endpoints outward by offsetVec in 3D
+      const [ox, oy, oz] = offsetVec;
+      const sp = pt(p1[0] + ox, p1[1] + oy, p1[2] + oz);
+      const ep = pt(p2[0] + ox, p2[1] + oy, p2[2] + oz);
+      // Perpendicular unit vector in canvas space
+      const dx = ep.px - sp.px, dy = ep.py - sp.py;
+      const len = Math.hypot(dx, dy) || 1;
+      const npx = -dy / len, npy = dx / len;
+      // Arrow body
+      ctx.strokeStyle = '#c0392b';
+      ctx.lineWidth = 1.3;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(sp.px, sp.py);
+      ctx.lineTo(ep.px, ep.py);
+      ctx.stroke();
+      // Arrow head
+      const angle = Math.atan2(dy, dx);
+      const headLen = 7;
+      ctx.beginPath();
+      ctx.moveTo(ep.px, ep.py);
+      ctx.lineTo(ep.px - headLen * Math.cos(angle - Math.PI / 6), ep.py - headLen * Math.sin(angle - Math.PI / 6));
+      ctx.moveTo(ep.px, ep.py);
+      ctx.lineTo(ep.px - headLen * Math.cos(angle + Math.PI / 6), ep.py - headLen * Math.sin(angle + Math.PI / 6));
+      ctx.stroke();
+      // Label at midpoint, offset perpendicular to line
+      const midPx = (sp.px + ep.px) / 2 + perpOff * npx;
+      const midPy = (sp.py + ep.py) / 2 + perpOff * npy;
+      ctx.fillStyle = '#c0392b';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(label, midPx, midPy);
+      ctx.textAlign = 'left';
+      ctx.setLineDash([]);
+    }
+
+    // L arrow: along part X axis (off, off, off) → (off+partVisL, off, off)
+    // Offset slightly toward -Y and -Z (front-bottom corner of part)
+    drawPartDimArrow([fpx1, fpy1, fpz1], [fpx2, fpy1, fpz1], `${part.l}mm`, arrowOff, [0, -3, -3]);
+    // W arrow: along part Z axis (off, off, off) → (off, off, off+partVisW)
+    drawPartDimArrow([fpx1, fpy1, fpz1], [fpx1, fpy1, fpz2], `${part.w}mm`, arrowOff, [-3, -3, 0]);
+    // H arrow: along part Y axis (off, off, off) → (off, off+partVisH, off)
+    drawPartDimArrow([fpx1, fpy1, fpz1], [fpx1, fpy2, fpz1], `${part.h}mm`, arrowOff, [-3, 0, -3]);
   }
 
   // ── Outer box edges (drawn on top) ──
@@ -2347,7 +2512,7 @@ function drawPkgPreview(method, part) {
     ctx.textAlign = 'left';
   }
 
-  // Dimension callout lines
+  // ── Box outer dimension callout lines (existing) ──
   ctx.fillStyle = 'rgba(120,100,80,0.70)';
   ctx.font = '10px sans-serif';
   ctx.textAlign = 'center';
