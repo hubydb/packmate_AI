@@ -1208,7 +1208,7 @@ function computePkgMethods(part) {
     const viable = orientations.filter(o => o.d[0] <= boxL && o.d[1] <= boxW && o.d[2] <= boxH);
     if (viable.length === 0) return null;
 
-    // 空格 {x, y, z, l, w, h}: 左下前角起点 + 尺寸
+    // ── FFD 放置循环（所有物品统一使用，包括不可倒置）───────────────────────
     let gaps = [{ x: 0, y: 0, z: 0, l: boxL, w: boxW, h: boxH }];
     const placed = [];  // {x, y, z, d:[dX,dY,dZ], orient}
     const MAX = 100000;
