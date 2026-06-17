@@ -917,11 +917,11 @@ body {
       <div class="card-title"><span class="icon">📐</span> 集装箱装载示意图</div>
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
         <span style="font-size:13px;color:var(--gray-2);">当前已装载：</span>
-        <span id="loadedCountLabel" style="font-size:15px;font-weight:700;color:var(--primary);">0 件</span>
-        <span style="font-size:13px;color:var(--gray-3);">/ 方案总容量 <span id="totalCapLabel">—</span> 件</span>
+        <span id="loadedCountLabel" style="font-size:15px;font-weight:700;color:var(--primary);">0 箱</span>
+        <span style="font-size:13px;color:var(--gray-3);">(<span id="loadedPartsLabel">0 件</span>) / 方案总容量 <span id="totalCapLabel">—</span> 箱</span>
         <div style="margin-left:16px;display:flex;gap:8px;">
-          <button class="btn" style="height:30px;padding:0 14px;font-size:13px;" onclick="addLoadedParts(1)">+1 件</button>
-          <button class="btn" style="height:30px;padding:0 14px;font-size:13px;" onclick="addLoadedParts(10)">+10 件</button>
+          <button class="btn" style="height:30px;padding:0 14px;font-size:13px;" onclick="addLoadedParts(1)">+1 箱</button>
+          <button class="btn" style="height:30px;padding:0 14px;font-size:13px;" onclick="addLoadedParts(10)">+10 箱</button>
           <button class="btn" style="height:30px;padding:0 14px;font-size:13px;" onclick="resetLoadedParts()">重置</button>
         </div>
         <div id="loadingProgress" style="margin-left:auto;font-size:12px;color:var(--gray-3);"></div>
@@ -1055,9 +1055,10 @@ const state = {
   pkgMethods: [],
   scheme: null,
   cost: null,
-  loadedParts: 0,       // 当前已装载零件数
-  layoutPart: null,     // 绘图用的 part 对象
-  layoutMethod: null,   // 绘图用的 method 对象
+  loadedBoxes: 0,      // 当前已装载箱数
+  loadedParts: 0,      // 当前已装载总零件数（用于计算最后一个未满箱）
+  layoutPart: null,    // 绘图用的 part 对象
+  layoutMethod: null,  // 绘图用的 method 对象
 };
 
 /* ────────────────────────────── Navigation ────────────────────────────── */
@@ -1150,46 +1151,114 @@ function computePkgMethods(part) {
   const pW = part.w + 2 * part.buffer;
   const pH = part.h + 2 * part.buffer;
 
-  // ── Helper: 计算零件在固定包箱内的SNP（每箱装件数）──
+  // ── 包装件数 SNP 计算：py3dbp 贪婪首次适应（First Fit Decreasing）──
+  // 策略：按体积从大到小尝试放置每个零件，每次选择"最紧"（剩余体积最小）的空格
+  // 空格分解正确：将已占用的格子分成最多7个不重叠的剩余区域
   function calcSNP(boxL, boxW, boxH) {
-    // 尝试三种摆放方式，取最大SNP
-    const candidates = [];
-
-    // 方式1: 零件平放 (L×W为底面)
-    const nx1 = Math.floor(boxL / pL);
-    const ny1 = Math.floor(boxW / pW);
-    const nz1 = Math.floor(boxH / pH);
-    if (nx1 >= 1 && ny1 >= 1 && nz1 >= 1) {
-      candidates.push({ snp: nx1 * ny1 * nz1, orientation: 'flat' });
-    }
-
-    // 方式2: 零件立放 (L×H为底面)
+    // 朝向: [沿X轴占用, 沿Y轴占用, 沿Z轴占用, 标签]
+    const orientations = [
+      { d: [pL, pW, pH], label: 'flat' },
+    ];
     if (!loadChars.includes('不可倒置')) {
-      const nx2 = Math.floor(boxL / pL);
-      const ny2 = Math.floor(boxH / pW);
-      const nz2 = Math.floor(boxW / pH);
-      if (nx2 >= 1 && ny2 >= 1 && nz2 >= 1) {
-        candidates.push({ snp: nx2 * ny2 * nz2, orientation: 'stand' });
+      orientations.push(
+        { d: [pW, pL, pH], label: 'rot-y' },
+        { d: [pH, pW, pL], label: 'rot-x' },
+        { d: [pW, pH, pL], label: 'rot-z' },
+        { d: [pL, pH, pW], label: 'flip-y' },
+        { d: [pH, pL, pW], label: 'flip-x' },
+      );
+    }
+
+    const viable = orientations.filter(o => o.d[0] <= boxL && o.d[1] <= boxW && o.d[2] <= boxH);
+    if (viable.length === 0) return null;
+
+    // 空格 {x, y, z, l, w, h}: 左下前角起点 + 尺寸
+    let gaps = [{ x: 0, y: 0, z: 0, l: boxL, w: boxW, h: boxH }];
+    const placed = [];  // {x, y, z, d:[dX,dY,dZ], orient}
+    const MAX = 500;
+
+    // ── 放置循环：每次找最佳空格 × 朝向组合 ──
+    for (let iter = 0; iter < MAX; iter++) {
+      let bestGap = null, bestOrient = null, bestScore = Infinity;
+
+      for (const orient of viable) {
+        const [dX, dY, dZ] = orient.d;
+        for (const gap of gaps) {
+          if (dX > gap.l || dY > gap.w || dZ > gap.h) continue;
+          // Heuristic: 放入后剩余体积越小越好（同尺寸零件=最紧填充）
+          const remVol = (gap.l - dX) * gap.w * gap.h
+                       + gap.l * (gap.w - dY) * gap.h
+                       + gap.l * gap.w * (gap.h - dZ);
+          // Tiebreak: 更靠前(LBf) → x小 → y小 → z小
+          const score = remVol * 1e9 + gap.x * 1e6 + gap.y * 1e3 + gap.z;
+          if (score < bestScore) { bestScore = score; bestGap = gap; bestOrient = orient; }
+        }
       }
+      if (!bestGap) break; // 再也放不下
+
+      const { x, y, z, l: gL, w: gW, h: gH } = bestGap;
+      const [dX, dY, dZ] = bestOrient.d;
+      placed.push({ x, y, z, d: [dX, dY, dZ], orient: bestOrient.label });
+
+      // 从空格列表移除被占用的
+      gaps = gaps.filter(g => g !== bestGap);
+
+      const aX = gL - dX, aY = gW - dY, aZ = gH - dZ;
+
+      // 将剩余空间分成最多7个不重叠区域（正确分解）：
+      //  item occupies: (x, y, z, dX, dY, dZ)
+      //  remaining region: (x, y, z) to (x+gL, y+gW, z+gH)
+      //
+      //  Gap1 - right:   (x+dX, y,       z,       aX, gW,    gH)   along X
+      //  Gap2 - front:   (x,    y+dY,    z,       dX, aY,    dZ)   along Y
+      //  Gap3 - inner:   (x,    y,        z+dZ,   gL, gW,    aZ)   along Z
+      //  Gap4 - X∧Y:     (x+dX, y+dY,    z,       aX, aY,    dZ)
+      //  Gap5 - X∧Z:     (x+dX, y,        z+dZ,   aX, gW,    aZ)
+      //  Gap6 - Y∧Z:     (x,    y+dY,    z+dZ,   dX, aY,    aZ)
+      //  Gap7 - X∧Y∧Z:   (x+dX, y+dY,    z+dZ,   aX, aY,    aZ)
+
+      if (aX > 0) gaps.push({ x: x + dX, y,       z,       l: aX, w: gW,    h: gH    });
+      if (aY > 0) gaps.push({ x,         y: y+dY,  z,       l: dX, w: aY,    h: dZ    });
+      if (aZ > 0) gaps.push({ x,         y,        z: z+dZ, l: gL, w: gW,    h: aZ    });
+      if (aX > 0 && aY > 0) gaps.push({ x: x+dX, y: y+dY, z,       l: aX, w: aY,    h: dZ    });
+      if (aX > 0 && aZ > 0) gaps.push({ x: x+dX, y,        z: z+dZ, l: aX, w: gW,    h: aZ    });
+      if (aY > 0 && aZ > 0) gaps.push({ x,        y: y+dY,  z: z+dZ, l: dX, w: aY,    h: aZ    });
+      if (aX > 0 && aY > 0 && aZ > 0) gaps.push({ x: x+dX, y: y+dY, z: z+dZ, l: aX, w: aY, h: aZ });
+
+      // 去除被其他空格完全包含的（消除冗余）
+      const filtered = [];
+      outer:
+      for (const g of gaps) {
+        for (const o of gaps) {
+          if (g !== o && o.x <= g.x && o.y <= g.y && o.z <= g.z
+              && o.l >= g.l && o.w >= g.w && o.h >= g.h
+              && (o.l > g.l || o.w > g.w || o.h > g.h)) {
+            continue outer;
+          }
+        }
+        filtered.push(g);
+      }
+      gaps = filtered;
     }
 
-    // 方式3: 零件侧放 (W×H为底面)
-    const nx3 = Math.floor(boxW / pL);
-    const ny3 = Math.floor(boxH / pW);
-    const nz3 = Math.floor(boxL / pH);
-    if (nx3 >= 1 && ny3 >= 1 && nz3 >= 1) {
-      candidates.push({ snp: nx3 * ny3 * nz3, orientation: 'side' });
-    }
+    // 统计主朝向和可视化用网格数
+    const cnt = {};
+    for (const p of placed) cnt[p.orient] = (cnt[p.orient] || 0) + 1;
+    let primary = 'flat', mx = 0;
+    for (const [o, c] of Object.entries(cnt)) { if (c > mx) { mx = c; primary = o; } }
 
-    if (candidates.length === 0) return null;
-    // 返回SNP最大的方式
-    candidates.sort((a, b) => b.snp - a.snp);
-    return candidates[0];
+    const po = viable.find(o => o.label === primary) || viable[0];
+    const [dX, dY, dZ] = po.d;
+    const nx = Math.max(1, Math.floor(boxL / dX));
+    const ny = Math.max(1, Math.floor(boxW / dY));
+    const nz = Math.max(1, Math.floor(boxH / dZ));
+
+    return { snp: placed.length, orientation: primary, nx, ny, nz };
   }
 
   // ── Helper: evaluate one box spec ──
   function evalMethod(cfg) {
-    const { boxId, boxName, boxL, boxW, boxH, material, snp, orientation } = cfg;
+    const { boxId, boxName, boxL, boxW, boxH, material, snp, orientation, nx, ny, nz } = cfg;
 
     // 固定包箱尺寸即包装尺寸
     const pkgL = boxL;
@@ -1215,22 +1284,30 @@ function computePkgMethods(part) {
       return null;
     }
 
-    // 易碎件不使用叠放
-    if (isFragile && (orientation === 'stack' || (orientation !== 'flat' && orientation !== 'side' && snp > 1))) {
+    // 易碎件：仅允许平放（Z=原H最小边朝上）和 rot-z（侧放），且多件时不允许有上下叠层风险
+    if (isFragile && snp > 1 && orientation !== 'flat' && orientation !== 'rot-z') {
       return null;
     }
 
     // Volume fit: how many boxes in container
-    const nx = Math.floor(ctnL / pkgL);
-    const ny = Math.floor(ctnW / pkgW);
-    const nz = Math.floor(ctnH / pkgH);
-    const byVolume = nx * ny * nz;
+    const ctnNX = Math.floor(ctnL / pkgL);
+    const ctnNY = Math.floor(ctnW / pkgW);
+    const ctnNZ = Math.floor(ctnH / pkgH);
+    const byVolume = ctnNX * ctnNY * ctnNZ;
     const byWeight = perBoxWeight > 0 ? Math.floor(ctnMaxWeight / perBoxWeight) : byVolume;
     const boxesPerCtn = Math.max(1, Math.min(byVolume, byWeight));
     const totalParts = boxesPerCtn * snp;
     const usedVol = boxesPerCtn * pkgL * pkgW * pkgH;
     const containerVol = ctnL * ctnW * ctnH;
-    const fillRate = usedVol / containerVol;
+    const containerFillRate = usedVol / containerVol;
+
+    // ── py3dbp 核心：包箱本身的空间利用率（零件占用体积 / 包箱内部体积）──
+    const partVol = part.l * part.w * part.h;
+    const boxVol = pkgL * pkgW * pkgH;
+    const fillRate = (snp * partVol) / boxVol;  // 优先：包箱本身装满程度
+
+    // 综合得分 = 包箱利用率 × 集装箱件数（让装得满且装得多的方案排前面）
+    const compositeScore = fillRate * totalParts;
 
     const matInfo = MATERIAL_PRICES[material];
     const surfaceArea = (pkgL * pkgW + pkgL * pkgH + pkgW * pkgH) * 2 / 1e6;
@@ -1240,21 +1317,27 @@ function computePkgMethods(part) {
     const consumableCost = part.antiRust ? (15 + snp * 3) : snp * 2;
     const singlePkgCost = materialCost + laborCost + antiRustCost + consumableCost;
 
-    const orientationLabels = { flat: '平放', stand: '立放', side: '侧放', stack: '叠放' };
+    const orientationLabels = {
+      'flat': '平放', 'rot-x': '立放（绕X轴）', 'rot-y': '旋转（绕Y轴）',
+      'rot-z': '侧放（绕Z轴）', 'flip-x': '翻转（绕X轴）', 'flip-y': '翻转（绕Y轴）', 'side': '侧放', 'stack': '叠放'
+    };
 
     return {
       id: `${material}-${boxId}`,
       name: `${matInfo.name} ${boxName}`,
-      desc: `${orientationLabels[orientation]} | 每箱 ${snp} 件 | 包箱 ${pkgL}×${pkgW}×${pkgH}mm`,
+      desc: `${orientationLabels[orientation] || orientation} | 每箱 ${snp} 件 | 包箱 ${pkgL}×${pkgW}×${pkgH}mm`,
       snp,
       orientation,
+      nx, ny, nz,   // 零件在包箱内的网格数（用于 3D 可视化）
       pkgL, pkgW, pkgH,
       material,
       boxId,
       perBoxWeight,
       boxesPerCtn,
       totalParts,
-      fillRate,
+      fillRate,            // 包箱本身利用率（py3dbp 核心指标）
+      containerFillRate,   // 集装箱整体利用率（辅助参考）
+      compositeScore,      // 综合得分 = 包箱利用率 × 总件数
       singlePkgCost,
     };
   }
@@ -1275,13 +1358,16 @@ function computePkgMethods(part) {
         material: mat,
         snp: snpResult.snp,
         orientation: snpResult.orientation,
+        nx: snpResult.nx || 1,
+        ny: snpResult.ny || 1,
+        nz: snpResult.nz || 1,
       });
       if (m) methods.push(m);
     }
   }
 
-  // Sort by fill rate descending
-  methods.sort((a, b) => b.fillRate - a.fillRate);
+  // Sort by composite score descending（包箱利用率 × 集装箱总件数）
+  methods.sort((a, b) => b.compositeScore - a.compositeScore);
   return methods;
 }
 
@@ -1317,6 +1403,10 @@ function goStep2() {
 
   state.currentPart = part;
   state.pkgMethods = computePkgMethods(part);
+  if (!state.pkgMethods || state.pkgMethods.length === 0) {
+    alert('无法为此零件推荐包装方式，可能零件尺寸超出所有包箱规格，请尝试减小缓冲厚度或检查尺寸输入。');
+    return;
+  }
   state.selectedPkgMethod = state.pkgMethods[0].id; // default: highest fill rate
 
   // Render summary
@@ -1337,8 +1427,9 @@ function goStep2() {
         ${m.desc}<br/>
         包箱尺寸：${m.pkgL}×${m.pkgW}×${m.pkgH} mm &nbsp;|&nbsp;
         单箱重量：<b>${m.perBoxWeight.toFixed(1)}kg</b><br/>
-        集装箱空间利用率：<b style="color:var(--primary)">${(m.fillRate * 100).toFixed(1)}%</b>
-        &nbsp;|&nbsp; 每集装箱 ${m.totalParts} 件
+        包箱空间利用率：<b style="color:var(--primary)">${(m.fillRate * 100).toFixed(1)}%</b>
+        &nbsp;|&nbsp; 集装箱空间利用率：${(m.containerFillRate * 100).toFixed(1)}%<br/>
+        每集装箱 <b>${m.totalParts}</b> 件（${m.boxesPerCtn} 箱 × ${m.snp} 件/箱）
       </div>
     </div>
   `).join('');
@@ -1394,8 +1485,7 @@ function goStep3() {
   const warnings = [];
   if (maxLoad > 0 && perBoxTotalWeight > maxLoad) warnings.push(`⚠️ 单箱重量 ${perBoxTotalWeight.toFixed(1)}kg 超过零件最大承重 ${maxLoad}kg`);
   if (totalWeightPerCtn > ctnMaxWeight) warnings.push(`⚠️ 集装箱总重量 ${totalWeightPerCtn.toFixed(1)}kg 超过最大载重 ${ctnMaxWeight}kg`);
-  if (loadChars.includes('易碎') && method.orientation === 'stack') warnings.push('⚠️ 易碎件不得使用叠放方式');
-  if (loadChars.includes('不可倒置') && method.orientation === 'stand') warnings.push('⚠️ 不可倒置件不得使用立放方式');
+  if (loadChars.includes('不可倒置') && method.orientation === 'flip-x') warnings.push('⚠️ 不可倒置件不得使用翻转（绕X轴）方式');
   if (method.pkgL > ctnSpec.l || method.pkgW > ctnSpec.w || method.pkgH > ctnSpec.h) warnings.push('⚠️ 包装箱尺寸超出集装箱内径');
 
   const constraintOk = warnings.length === 0;
@@ -1407,11 +1497,12 @@ function goStep3() {
     ['零件尺寸', `${part.l} × ${part.w} × ${part.h} mm`, '长×宽×高'],
     ['包装方式', method.name, ''],
     ['包箱规格', method.boxId === 'A' ? '规格A（1000×800×500mm）' : '规格B（800×600×400mm）', ''],
-    ['摆放方式', method.orientation === 'flat' ? '平放' : method.orientation === 'stand' ? '立放' : method.orientation === 'stack' ? '叠放' : method.orientation === 'side' ? '侧放' : method.orientation, ''],
+    ['摆放方式', method.orientation === 'flat' ? '平放' : method.orientation === 'rot-x' ? '立放（绕X轴）' : method.orientation === 'rot-y' ? '旋转（绕Y轴）' : method.orientation === 'rot-z' ? '侧放（绕Z轴）' : method.orientation === 'flip-x' ? '翻转（绕X轴）' : method.orientation === 'flip-y' ? '翻转（绕Y轴）' : method.orientation === 'stack' ? '叠放' : method.orientation === 'side' ? '侧放' : method.orientation, ''],
     ['SNP（每箱件数）', `${method.snp} 件`, 'Standard Packing Quantity'],
     ['每集装箱箱数', `${boxesPerCtn} 箱`, '按尺寸+重量取小值'],
     ['每集装箱总件数', `${totalPartsPerCtn} 件`, '箱数 × SNP'],
-    ['集装箱空间利用率', `${(fillRate * 100).toFixed(1)}%`, '已用体积 / 箱体积'],
+    ['包箱空间利用率', `${(method.fillRate * 100).toFixed(1)}%`, '零件体积 / 包箱体积（py3dbp核心指标）'],
+    ['集装箱空间利用率', `${(method.containerFillRate * 100).toFixed(1)}%`, '已装包箱总体积 / 集装箱体积'],
     ['单箱总重量', `${perBoxTotalWeight.toFixed(1)} kg`, maxLoad > 0 ? `零件最大承重 ${maxLoad}kg（${maxLoadPct}%）` : '集装箱最大载重 ' + ctnMaxWeight + 'kg'],
     ['集装箱总重量', `${totalWeightPerCtn.toFixed(1)} kg`, `集装箱最大载重 ${ctnMaxWeight}kg（${ctnLoadPct}%）`],
     ['经济批次所需箱数', `${batchesNeeded} 箱`, `按批次量 ${part.batchQty} 件计算`],
@@ -1428,11 +1519,13 @@ function goStep3() {
   drawLayout(part, method, boxesPerCtn);
   state.layoutPart = part;
   state.layoutMethod = method;
+  state.loadedBoxes = 0;
   state.loadedParts = 0;
   state.layoutAlpha = Math.PI / 5;  // default rotation
   state.layoutBeta  = Math.PI / 7;  // default tilt
-  document.getElementById('loadedCountLabel').textContent = '0 件';
-  document.getElementById('totalCapLabel').textContent = totalPartsPerCtn;
+  document.getElementById('loadedCountLabel').textContent = '0 箱';
+  document.getElementById('loadedPartsLabel').textContent = '0 件';
+  document.getElementById('totalCapLabel').textContent = boxesPerCtn + ' 箱（' + totalPartsPerCtn + ' 件）';
   document.getElementById('loadingProgress').textContent = '';
 
   goStep(3);
@@ -1480,8 +1573,10 @@ function drawLayout(part, method, boxes) {
   const ctnL = ctnSpec.l;
   const ctnW = ctnSpec.w;
   const ctnH = ctnSpec.h;
-  const loaded = state.loadedParts;
-  const maxToShow = Math.min(loaded, boxes * method.snp);
+  // 装载以箱为单位，最后一箱可能未装满
+  const filledBoxes = Math.min(state.loadedBoxes, boxes);  // 已完全装入的箱数
+  const partsInLastBox = (state.loadedBoxes >= boxes ? 0
+    : (state.loadedParts - filledBoxes * method.snp));     // 最后一箱的零件数
 
   const alpha = state.layoutAlpha || Math.PI / 5;
   const beta  = state.layoutBeta  || Math.PI / 7;
@@ -1638,11 +1733,11 @@ function drawLayout(part, method, boxes) {
   cEdges.forEach(([a, b]) => addEdge(cVerts[a], cVerts[b]));
 
   // ── Package boxes ──
-  if (maxToShow === 0) {
+  if (filledBoxes === 0 && partsInLastBox === 0) {
     ctx.fillStyle = 'rgba(160,170,185,0.7)';
     ctx.font = 'bold 15px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('拖动旋转 · 点击上方「+1 件」或「+10 件」开始装载', OX, OY + ctnH * scale * 0.3);
+    ctx.fillText('拖动旋转 · 点击上方「+1 箱」或「+10 箱」开始装载', OX, OY + ctnH * scale * 0.3);
     ctx.textAlign = 'left';
     ctx.fillStyle = 'rgba(100,115,130,0.7)';
     ctx.font = '11px sans-serif';
@@ -1652,14 +1747,63 @@ function drawLayout(part, method, boxes) {
     return;
   }
 
-  const filledBoxes = Math.floor(maxToShow / method.snp);
-  const lastBoxParts = maxToShow % method.snp;
   const pkgL = method.pkgL;
   const pkgW = method.pkgW;
   const pkgH = method.pkgH;
   const nx = Math.floor(ctnL / pkgL);
   const ny = Math.floor(ctnH / pkgH);
   const nz = Math.floor(ctnW / pkgW);
+
+  // ── py3dbp 3D packing for parts inside a box ──
+  // Determine part grid inside a single box based on method orientation
+  const pBufL = part.l + 2 * part.buffer;
+  const pBufW = part.w + 2 * part.buffer;
+  const pBufH = part.h + 2 * part.buffer;
+
+  // Determine part grid counts per box based on actual orientation
+  // calcSNP dims = [dX, dY, dZ] = [along boxL, along boxW, along boxH]
+  // dX/dY/dZ tell how many parts fit in each box axis
+  const primaryOrient = (method.orientation || 'flat').split('+')[0];
+  let partNX, partNY, partNZ;
+  if (primaryOrient === 'flat') {
+    // dims [pL, pW, pH]: boxL gets partL, boxW gets partW, boxH gets partH
+    partNX = Math.floor(pkgL / pBufL);
+    partNY = Math.floor(pkgW / pBufW);
+    partNZ = Math.floor(pkgH / pBufH);
+  } else if (primaryOrient === 'rot-y') {
+    // dims [pW, pL, pH]: boxL gets partW, boxW gets partL, boxH gets partH
+    partNX = Math.floor(pkgL / pBufW);
+    partNY = Math.floor(pkgW / pBufL);
+    partNZ = Math.floor(pkgH / pBufH);
+  } else if (primaryOrient === 'rot-x') {
+    // dims [pH, pW, pL]: boxL gets partH, boxW gets partW, boxH gets partL
+    partNX = Math.floor(pkgL / pBufH);
+    partNY = Math.floor(pkgW / pBufW);
+    partNZ = Math.floor(pkgH / pBufL);
+  } else if (primaryOrient === 'rot-z') {
+    // dims [pW, pH, pL]: boxL gets partW, boxW gets partH, boxH gets partL
+    partNX = Math.floor(pkgL / pBufW);
+    partNY = Math.floor(pkgW / pBufH);
+    partNZ = Math.floor(pkgH / pBufL);
+  } else if (primaryOrient === 'flip-y') {
+    // dims [pL, pH, pW]: boxL gets partL, boxW gets partH, boxH gets partW
+    partNX = Math.floor(pkgL / pBufL);
+    partNY = Math.floor(pkgW / pBufH);
+    partNZ = Math.floor(pkgH / pBufW);
+  } else if (primaryOrient === 'flip-x') {
+    // dims [pH, pL, pW]: boxL gets partH, boxW gets partL, boxH gets partW
+    partNX = Math.floor(pkgL / pBufH);
+    partNY = Math.floor(pkgW / pBufL);
+    partNZ = Math.floor(pkgH / pBufW);
+  } else {
+    // fallback: assume flat
+    partNX = Math.max(1, Math.floor(pkgL / pBufL));
+    partNY = Math.max(1, Math.floor(pkgW / pBufW));
+    partNZ = Math.max(1, Math.floor(pkgH / pBufH));
+  }
+
+  // Cushion gap on each side of parts inside box
+  const inBoxGap = part.buffer;
 
   // Vibrant color palettes — each box gets a distinct hue
   const palettes = [
@@ -1671,47 +1815,117 @@ function drawLayout(part, method, boxes) {
     { fill: '#1abc9c', dark: '#0e7868', mid: '#16a085' },  // teal
   ];
 
-  // Collect all box faces
+  // Collect all faces (boxes + optional parts inside last box)
   const allFaces = [];
-  let partIndex = 0;
-  for (let ix = 0; ix < nx && partIndex < filledBoxes + (lastBoxParts > 0 ? 1 : 0); ix++) {
-    for (let iz = 0; iz < nz && partIndex < filledBoxes + (lastBoxParts > 0 ? 1 : 0); iz++) {
-      for (let iy = 0; iy < ny && partIndex < filledBoxes + (lastBoxParts > 0 ? 1 : 0); iy++) {
-        const pal = palettes[partIndex % palettes.length];
+  let boxIndex = 0;
+
+  for (let ix = 0; ix < nx && boxIndex < filledBoxes + (partsInLastBox > 0 ? 1 : 0); ix++) {
+    for (let iz = 0; iz < nz && boxIndex < filledBoxes + (partsInLastBox > 0 ? 1 : 0); iz++) {
+      for (let iy = 0; iy < ny && boxIndex < filledBoxes + (partsInLastBox > 0 ? 1 : 0); iy++) {
+        const isPartial = boxIndex === filledBoxes && partsInLastBox > 0;
+        const pal = palettes[boxIndex % palettes.length];
         const bx0 = ix * pkgL, bx1 = Math.min(bx0 + pkgL, ctnL);
         const by0 = iy * pkgH, by1 = Math.min(by0 + pkgH, ctnH);
         const bz0 = iz * pkgW, bz1 = Math.min(bz0 + pkgW, ctnW);
 
-        const corners = [
-          pt(bx0, by0, bz0), pt(bx1, by0, bz0), pt(bx1, by0, bz1), pt(bx0, by0, bz1),
-          pt(bx0, by1, bz0), pt(bx1, by1, bz0), pt(bx1, by1, bz1), pt(bx0, by1, bz1),
+        // Box face colors (slightly transparent so we can see parts inside partial box)
+        const boxAlphaHex = isPartial ? '38' : '50';
+        const boxFaceDefs = [
+          { v: [4,5,6,7], n: [0,1,0] },
+          { v: [3,7,6,2], n: [0,0,1] },
+          { v: [2,6,5,1], n: [1,0,0] },
+          { v: [0,4,7,3], n: [-1,0,0] },
+          { v: [1,5,4,0], n: [0,0,-1] },
+          { v: [0,3,2,1], n: [0,-1,0] },
         ];
-
-        const faceDefs = [
-          { v: [4,5,6,7], n: [0,1,0] },  // top      — brightest
-          { v: [3,7,6,2], n: [0,0,1] },  // z-front
-          { v: [2,6,5,1], n: [1,0,0] },  // x-right
-          { v: [0,4,7,3], n: [-1,0,0] }, // x-left
-          { v: [1,5,4,0], n: [0,0,-1] }, // z-back
-          { v: [0,3,2,1], n: [0,-1,0] }, // bottom   — darkest
-        ];
-
-        faceDefs.forEach(fd => {
+        boxFaceDefs.forEach(fd => {
           const rn = rotNormal(fd.n);
           if (rn[2] < 0) {
+            const corners = [
+              pt(bx0, by0, bz0), pt(bx1, by0, bz0), pt(bx1, by0, bz1), pt(bx0, by0, bz1),
+              pt(bx0, by1, bz0), pt(bx1, by1, bz0), pt(bx1, by1, bz1), pt(bx0, by1, bz1),
+            ];
             const fpts = fd.v.map(vi => corners[vi]);
             const centerDepth = fpts.reduce((s, p) => s + p.depth, 0) / fpts.length;
             let alphaHex;
-            if (fd.n[1] === 1)       alphaHex = '55'; // top — most opaque
-            else if (fd.n[1] === -1) alphaHex = '18'; // bottom — ghost
-            else if (fd.n[0] === 1)  alphaHex = '38'; // right — medium
-            else if (fd.n[0] === -1) alphaHex = '2a'; // left — slightly darker
-            else                     alphaHex = '42'; // front — visible
+            if (fd.n[1] === 1)       alphaHex = '55';
+            else if (fd.n[1] === -1) alphaHex = '18';
+            else if (fd.n[0] === 1)  alphaHex = '38';
+            else if (fd.n[0] === -1) alphaHex = '28';
+            else                     alphaHex = '42';
             allFaces.push({ pts: fpts, fill: pal.fill + alphaHex, stroke: pal.dark, depth: centerDepth, lw: 0.7 });
           }
         });
 
-        partIndex++;
+        // ── Draw parts inside the last partial box ──
+        if (isPartial && partsInLastBox > 0) {
+          // Visual size of part inside this box (with gap)
+          // Box axes: X=length(pkgL), Y=height(pkgH), Z=width(pkgW)
+          // Part grid: gX=partNX(along X), gY=partNY(along Z), gZ=partNZ(along Y)
+          const inL = (bx1 - bx0 - 2 * inBoxGap) / partNX;
+          const inW = (bz1 - bz0 - 2 * inBoxGap) / partNY;  // Z axis = width (pkgW)
+          const inH = (by1 - by0 - 2 * inBoxGap) / partNZ;  // Y axis = height (pkgH)
+
+          // Part palettes (different from box colors)
+          const partPalettes2 = [
+            { fill: '#e74c3c', dark: '#c0392b', light: '#f1948a' },
+            { fill: '#3498db', dark: '#1f6aa5', light: '#85c1e9' },
+            { fill: '#27ae60', dark: '#1a7a42', light: '#82e0aa' },
+            { fill: '#f39c12', dark: '#d68910', light: '#f7dc6f' },
+          ];
+
+          let partCount = 0;
+          // Iterate through all grid positions in this box, fill only the first `partsInLastBox`
+          // Box axes: X=length(pkgL), Y=height(pkgH), Z=width(pkgW)
+          // Part grid: gX=partNX(along X), gY=partNY(along Z), gZ=partNZ(along Y)
+          // Z-axis first (front-to-back / height) for painter's algorithm
+          outerPartLoop:
+          for (let pz = 0; pz < partNZ; pz++) {
+            for (let py = 0; py < partNY; py++) {
+              for (let px = 0; px < partNX; px++) {
+                if (partCount >= partsInLastBox) break outerPartLoop;
+                const pp = partPalettes2[partCount % partPalettes2.length];
+
+                const ppx = bx0 + inBoxGap + px * inL;       // along X = box length
+                const ppy = by0 + inBoxGap + pz * inH;       // along Y = box height
+                const ppz = bz0 + inBoxGap + py * inW;       // along Z = box width
+                const ppx1 = ppx + inL - 2;  // small visual gap between parts
+                const ppy1 = ppy + inH - 2;
+                const ppz1 = ppz + inW - 2;
+
+                const pCorners = [
+                  pt(ppx, ppy, ppz), pt(ppx1, ppy, ppz), pt(ppx1, ppy, ppz1), pt(ppx, ppy, ppz1),
+                  pt(ppx, ppy1, ppz), pt(ppx1, ppy1, ppz), pt(ppx1, ppy1, ppz1), pt(ppx, ppy1, ppz1),
+                ];
+                const pFaceDefs = [
+                  { v: [4,5,6,7], n: [0,1,0] },  // top
+                  { v: [3,7,6,2], n: [0,0,1] },  // z-front
+                  { v: [2,6,5,1], n: [1,0,0] },  // x-right
+                  { v: [0,4,7,3], n: [-1,0,0] }, // x-left
+                  { v: [1,5,4,0], n: [0,0,-1] }, // z-back
+                  { v: [0,3,2,1], n: [0,-1,0] }, // bottom
+                ];
+                pFaceDefs.forEach(fd => {
+                  const rn = rotNormal(fd.n);
+                  if (rn[2] < 0) {
+                    const fpts = fd.v.map(vi => pCorners[vi]);
+                    const centerDepth = fpts.reduce((s, p) => s + p.depth, 0) / fpts.length;
+                    let alphaHex;
+                    if (fd.n[1] === 1)       alphaHex = 'cc'; // top — bright
+                    else if (fd.n[1] === -1) alphaHex = '55'; // bottom
+                    else if (fd.n[0] === 1)  alphaHex = '99'; // right
+                    else if (fd.n[0] === -1) alphaHex = '77'; // left
+                    else                     alphaHex = 'bb'; // front
+                    allFaces.push({ pts: fpts, fill: pp.fill + alphaHex, stroke: pp.dark, depth: centerDepth, lw: 0.5 });
+                  }
+                });
+                partCount++;
+              }
+            }
+          }
+        }
+
+        boxIndex++;
       }
     }
   }
@@ -1723,7 +1937,7 @@ function drawLayout(part, method, boxes) {
   ctx.fillStyle = 'rgba(80,95,110,0.75)';
   ctx.font = '11px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(`${ctnSpec.label}  ·  ${maxToShow} 件已装载  ·  拖动可旋转`, OX, H - 16);
+  ctx.fillText(`${ctnSpec.label}  ·  ${filledBoxes} 箱${partsInLastBox > 0 ? '（+' + partsInLastBox + '件）' : ''}已装载  ·  拖动可旋转`, OX, H - 16);
   ctx.textAlign = 'left';
 }
 
@@ -1778,25 +1992,28 @@ document.addEventListener('touchend', function() { _drag.active = false; });
 
 function addLoadedParts(n) {
   if (!state.scheme) return;
-  const totalCap = state.scheme.totalPartsPerCtn;
-  const remain = totalCap - state.loadedParts;
+  const { boxesPerCtn, totalPartsPerCtn, method } = state.scheme;
+  const remain = boxesPerCtn - state.loadedBoxes;
   if (remain <= 0) {
     document.getElementById('loadingProgress').textContent = '已满载，无需再装';
     return;
   }
-  const add = Math.min(n, remain);
-  state.loadedParts = Math.min(state.loadedParts + add, totalCap);
-  document.getElementById('loadedCountLabel').textContent = state.loadedParts + ' 件';
-  const pct = (state.loadedParts / totalCap * 100).toFixed(1);
+  const addBoxes = Math.min(n, remain);
+  state.loadedBoxes = Math.min(state.loadedBoxes + addBoxes, boxesPerCtn);
+  state.loadedParts = Math.min(state.loadedBoxes * method.snp, totalPartsPerCtn);
+  document.getElementById('loadedCountLabel').textContent = state.loadedBoxes + ' 箱';
+  document.getElementById('loadedPartsLabel').textContent = state.loadedParts + ' 件';
+  const pct = (state.loadedBoxes / boxesPerCtn * 100).toFixed(1);
   document.getElementById('loadingProgress').textContent = `进度 ${pct}%`;
-  // Redraw with new count (overwrites previous canvas content)
   drawLayout(state.layoutPart, state.layoutMethod, state.scheme.boxesPerCtn);
 }
 
 function resetLoadedParts() {
   if (!state.scheme) return;
+  state.loadedBoxes = 0;
   state.loadedParts = 0;
-  document.getElementById('loadedCountLabel').textContent = '0 件';
+  document.getElementById('loadedCountLabel').textContent = '0 箱';
+  document.getElementById('loadedPartsLabel').textContent = '0 件';
   document.getElementById('loadingProgress').textContent = '';
   drawLayout(state.layoutPart, state.layoutMethod, state.scheme.boxesPerCtn);
 }
@@ -1812,12 +2029,9 @@ function showPkgPreview(method, part) {
 
   // Build description
   const orientationLabels = {
-    'flat': '平放',
-    'stand': '立放',
-    'stack': '叠放',
-    'side': '侧放',
-    'row': '并排',
-    'row-rotated': '并排（旋转）',
+    'flat': '平放', 'rot-x': '立放（绕X轴）', 'rot-y': '旋转（绕Y轴）',
+    'rot-z': '侧放（绕Z轴）', 'flip-x': '翻转（绕X轴）', 'flip-y': '翻转（绕Y轴）',
+    'side': '侧放', 'stand': '立放', 'stack': '叠放',
   };
   const orientLabel = orientationLabels[method.orientation] || method.orientation;
   const descHtml = `
@@ -2026,83 +2240,92 @@ function drawPkgPreview(method, part) {
     });
 
   } else {
-    // Multi-part: show grid of parts inside outer box
-    // Determine grid layout (max 2×2 or 3×3 visible)
-    const cols = Math.min(Math.ceil(Math.sqrt(snp)), 3);
-    const rows = Math.min(Math.ceil(snp / cols), 3);
+    // ── Multi-part: 3D py3dbp grid packing ──
+    // Infer orientation from method.nx/ny/nz pattern to map iL/iW/iH correctly to gX/gY/gZ
+    // calcSNP uses dims=[partDimsAlongBoxX, partDimsAlongBoxY, partDimsAlongBoxZ]
+    // For flat: dims=[pL,pW,pH] → nx=floor(oL/pL), ny=floor(oW/pW), nz=floor(oH/pH)
+    // So iL (scaled pL) is along gX, iW (scaled pW) along gY, iH (scaled pH) along gZ
+    const mNX = method.nx || 1, mNY = method.ny || 1, mNZ = method.nz || 1;
+    // Determine orientation from grid ratio: which part dim maps to which box axis
+    // Box axes: X=oL(length), Y=oH(height), Z=oW(width)
+    // Part dims: iL(pL), iW(pW), iH(pH)
+    // Strategy: infer from which i-dim most tightly fills its corresponding box axis
+    const ratioL = mNX > 0 ? (mNX * iL) / oL : 0;  // how full is X axis with iL parts
+    const ratioW = mNY > 0 ? (mNY * iW) / oW : 0;  // how full is Z axis with iW parts
+    const ratioH = mNZ > 0 ? (mNZ * iH) / oH : 0;  // how full is Y axis with iH parts
+    // Best ratio → that i-dim maps to that box axis
+    const mapL = ratioL >= ratioW && ratioL >= ratioH ? 'L' : ratioW >= ratioH ? 'W' : 'H';
+    const gX = mNX;
+    const gY = Math.min(mNY, Math.ceil(snp / gX));
+    const gZ = Math.max(1, Math.ceil(snp / (gX * gY)));
+
+    const partGap = 3;  // visual gap between adjacent parts
+    const partVisL = (oL - 2 * off) / gX - partGap;
+    const partVisW = (oW - 2 * off) / gZ - partGap;
+    const partVisH = (oH - 2 * off) / gY - partGap;
+
     const visParts = [];
+    const partPalettes2 = [
+      { fill: '#3498db', dark: '#1f6aa5', light: '#85c1e9' },
+      { fill: '#27ae60', dark: '#1a7a42', light: '#82e0aa' },
+      { fill: '#e67e22', dark: '#a0510e', light: '#f5b041' },
+      { fill: '#9b59b6', dark: '#6c3483', light: '#c39bd3' },
+      { fill: '#e74c3c', dark: '#a93226', light: '#f1948a' },
+      { fill: '#1abc9c', dark: '#0e7868', light: '#76d7c4' },
+    ];
 
-    const totalPartsToShow = Math.min(snp, cols * rows);
+    // Z-axis first (front-to-back): painter's algorithm draws back parts first, front parts last
+    for (let pz = 0; pz < gZ; pz++) {
+      for (let py = 0; py < gY; py++) {
+        for (let px = 0; px < gX; px++) {
+          const partIdx = pz * gX * gY + py * gX + px;
+          if (partIdx >= snp) break;
 
-    // Calculate layout: items placed flush against box walls on all sides (buffer only at edges)
-    // Remaining space after placing cols items in X and rows items in Y is distributed as edge buffers
-    // Constraint: cols*iL + 2*edgeGapX = oL  => edgeGapX = (oL - cols*iL) / 2
-    const edgeGapX = (oL - cols * iL) / 2;
-    const edgeGapY = (oH - rows * iH) / 2;
+          const pal = partPalettes2[partIdx % partPalettes2.length];
+          const ppx = off + px * (partVisL + partGap);
+          const ppy = off + py * (partVisH + partGap);
+          const ppz = off + pz * (partVisW + partGap);
 
-    for (let p = 0; p < totalPartsToShow; p++) {
-      const row = Math.floor(p / cols);
-      const col = p % cols;
-      // Position each part with equal edge gaps on both sides (items flush against each other)
-      const px = edgeGapX + col * iL;
-      const py = edgeGapY + row * iH;
-      // All parts at same Z depth (2D projection, stacking shown via rows/cols)
-      const pz = off;
-      const pal = partPalettes[p % partPalettes.length];
+          const pFaceColors = {
+            0: pal.fill   + 'dd',  // z-front — brightest
+            1: pal.fill   + '60',  // z-back
+            2: pal.fill   + '99',  // x-right
+            3: pal.fill   + '70',  // x-left
+            4: pal.light  + 'dd',  // top — brightest surface
+            5: pal.dark   + '60',  // bottom
+          };
 
-      const pFaceColors = { 0: pal.fill+'e0', 1: pal.dark+'90', 2: pal.fill+'cc', 3: pal.dark+'70', 4: pal.light+'d0', 5: pal.dark+'60' };
+          const normals2 = [
+            { n: [0, 0, 1],  fi: 0, verts: [[ppx,ppy,ppz+partVisW],[ppx+partVisL,ppy,ppz+partVisW],[ppx+partVisL,ppy+partVisH,ppz+partVisW],[ppx,ppy+partVisH,ppz+partVisW]] },
+            { n: [0, 0,-1],  fi: 1, verts: [[ppx+partVisL,ppy,ppz],[ppx,ppy,ppz],[ppx,ppy+partVisH,ppz],[ppx+partVisL,ppy+partVisH,ppz]] },
+            { n: [1, 0, 0],  fi: 2, verts: [[ppx+partVisL,ppy,ppz],[ppx+partVisL,ppy,ppz+partVisW],[ppx+partVisL,ppy+partVisH,ppz+partVisW],[ppx+partVisL,ppy+partVisH,ppz]] },
+            { n: [-1,0, 0],  fi: 3, verts: [[ppx,ppy,ppz+partVisW],[ppx,ppy,ppz],[ppx,ppy+partVisH,ppz],[ppx,ppy+partVisH,ppz+partVisW]] },
+            { n: [0, 1, 0],  fi: 4, verts: [[ppx,ppy+partVisH,ppz],[ppx+partVisL,ppy+partVisH,ppz],[ppx+partVisL,ppy+partVisH,ppz+partVisW],[ppx,ppy+partVisH,ppz+partVisW]] },
+            { n: [0,-1, 0],  fi: 5, verts: [[ppx,ppy,ppz+partVisW],[ppx+partVisL,ppy,ppz+partVisW],[ppx+partVisL,ppy,ppz],[ppx,ppy,ppz]] },
+          ];
 
-      const normals2 = [
-        { n: [0, 0, 1],  fi: 0, verts: [[px,py,pz+iW],[px+iL,py,pz+iW],[px+iL,py+iH,pz+iW],[px,py+iH,pz+iW]] },
-        { n: [0, 0,-1],  fi: 1, verts: [[px+iL,py,pz],[px,py,pz],[px,py+iH,pz],[px+iL,py+iH,pz]] },
-        { n: [1, 0, 0],  fi: 2, verts: [[px+iL,py,pz],[px+iL,py,pz+iW],[px+iL,py+iH,pz+iW],[px+iL,py+iH,pz]] },
-        { n: [-1,0, 0],  fi: 3, verts: [[px,py,pz+iW],[px,py,pz],[px,py+iH,pz],[px,py+iH,pz+iW]] },
-        { n: [0, 1, 0],  fi: 4, verts: [[px,py+iH,pz],[px+iL,py+iH,pz],[px+iL,py+iH,pz+iW],[px,py+iH,pz+iW]] },
-        { n: [0,-1, 0],  fi: 5, verts: [[px,py,pz+iW],[px+iL,py,pz+iW],[px+iL,py,pz],[px,py,pz]] },
-      ];
-
-      normals2.forEach(f => {
-        const rn = rotNormal(f.n);
-        if (rn[2] < 0) {
-          const proj = f.verts.map(v => pt(...v));
-          const depth = proj.reduce((s, p) => s + p.depth, 0) / proj.length;
-          visParts.push({ pts: proj, fill: pFaceColors[f.fi], depth });
+          normals2.forEach(f => {
+            const rn = rotNormal(f.n);
+            if (rn[2] < 0) {
+              const proj = f.verts.map(v => pt(...v));
+              const depth = proj.reduce((s, p) => s + p.depth, 0) / proj.length;
+              visParts.push({ pts: proj, fill: pFaceColors[f.fi], depth });
+            }
+          });
         }
-      });
+      }
     }
 
+    // Painter's algorithm: sort by depth ascending (front = larger z2 = drawn last = on top)
     visParts.sort((a, b) => a.depth - b.depth);
-    visParts.forEach(f => drawPoly(f.pts, f.fill, null, 0.5));
+    visParts.forEach(f => drawPoly(f.pts, f.fill, null, 0.3));
 
-    // Re-draw visible part edges on top
-    for (let p = 0; p < totalPartsToShow; p++) {
-      const row = Math.floor(p / cols);
-      const col = p % cols;
-      const px = edgeGapX + col * iL;
-      const py = edgeGapY + row * iH;
-      const pz = off;
-      const v = [
-        pt(px,py,pz), pt(px+iL,py,pz), pt(px+iL,py,pz+iW), pt(px,py,pz+iW),
-        pt(px,py+iH,pz), pt(px+iL,py+iH,pz), pt(px+iL,py+iH,pz+iW), pt(px,py+iH,pz+iW),
-      ];
-      const e2 = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
-      e2.forEach(([a,b]) => {
-        ctx.shadowBlur = 0;
-        ctx.beginPath();
-        ctx.moveTo(v[a].px, v[a].py);
-        ctx.lineTo(v[b].px, v[b].py);
-        ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-        ctx.lineWidth = 0.5;
-        ctx.stroke();
-      });
-    }
-
-    // SNP label on top of outer box
+    // SNP label
     const labelPt = pt(oL/2, oH, oW/2);
     ctx.fillStyle = 'rgba(139,105,20,0.85)';
     ctx.font = 'bold 11px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(`SNP = ${snp}`, labelPt.px, labelPt.py - 4);
+    ctx.fillText(`SNP = ${snp}  (${gX}×${gY}×${gZ} 网格)`, labelPt.px, labelPt.py - 4);
     ctx.textAlign = 'left';
   }
 
@@ -2329,6 +2552,7 @@ function resetAll() {
   state.selectedPkgMethod = null;
   state.scheme = null;
   state.cost = null;
+  state.loadedBoxes = 0;
   state.loadedParts = 0;
   state.layoutAlpha = Math.PI / 5;
   state.layoutBeta  = Math.PI / 7;
