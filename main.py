@@ -30,6 +30,7 @@ def connect_csv():
 
 
 if __name__ == '__main__':
-
+    df = pd.read_csv('test_input_total.csv')
+    print(df.columns)
 
 # 访问 https://www.jetbrains.com/help/pycharm/ 获取 PyCharm 帮助

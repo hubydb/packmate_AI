@@ -1,0 +1,1513 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LightGBM 训练测试平台-v2.0</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --primary: #0052d9;
+  --primary-light: #e8f0fe;
+  --success: #2ba471;
+  --danger: #d54941;
+  --warning: #e37318;
+  --gray-1: #1c2435;
+  --gray-2: #4f5d73;
+  --gray-3: #8a94a6;
+  --gray-4: #c0c6d1;
+  --gray-5: #e8ecf0;
+  --gray-6: #f3f5f7;
+  --radius: 8px;
+  --shadow: 0 2px 8px rgba(0,0,0,.08);
+}
+body {
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: var(--gray-1);
+  background: var(--gray-6);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+.header {
+  background: #fff;
+  border-bottom: 1px solid var(--gray-5);
+  padding: 16px 32px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.header h1 { font-size: 18px; font-weight: 600; color: var(--primary); }
+.header .subtitle { font-size: 13px; color: var(--gray-3); }
+.header .badge {
+  padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 500;
+  background: var(--primary-light); color: var(--primary);
+}
+.header .mode-tag {
+  margin-left: auto; padding: 3px 12px; border-radius: 10px;
+  font-size: 12px; font-weight: 600;
+}
+.header .mode-tag.online { background: #e8f8ef; color: #2ba471; }
+.header .mode-tag.offline { background: #fef3e8; color: #e37318; }
+
+.main { max-width: 1100px; margin: 24px auto; padding: 0 24px; }
+
+.card {
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 24px 28px;
+  margin-bottom: 20px;
+}
+.card-title {
+  font-size: 16px; font-weight: 600; margin-bottom: 16px;
+  display: flex; align-items: center; gap: 8px;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 0 20px; height: 36px; border: 1px solid var(--gray-4);
+  border-radius: 4px; font-size: 14px; cursor: pointer; transition: all .2s;
+  background: #fff; color: var(--gray-1);
+}
+.btn:hover { border-color: var(--gray-3); }
+.btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+.btn-primary:hover { background: #0041b3; }
+.btn-success { background: var(--success); color: #fff; border-color: var(--success); }
+.btn-lg { height: 42px; padding: 0 32px; font-size: 15px; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Stat cards */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.stat-card {
+  background: #fff; border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 20px; text-align: center;
+}
+.stat-card .stat-label { font-size: 13px; color: var(--gray-3); margin-bottom: 6px; }
+.stat-card .stat-value { font-size: 28px; font-weight: 700; color: var(--primary); }
+.stat-card.accuracy .stat-value { color: var(--success); }
+.stat-card.highlight { background: var(--primary-light); }
+.stat-card.highlight .stat-value { color: var(--primary); }
+
+/* Progress */
+.progress-area { margin: 20px 0; }
+.progress-bar-wrap {
+  height: 8px; background: var(--gray-5); border-radius: 4px; overflow: hidden; margin: 8px 0;
+}
+.progress-bar-fill {
+  height: 100%; background: var(--primary); border-radius: 4px;
+  transition: width .3s; width: 0%;
+}
+.progress-log {
+  background: var(--gray-6); border-radius: 4px; padding: 12px 16px;
+  font-family: "Courier New", monospace; font-size: 12px;
+  max-height: 200px; overflow-y: auto; color: var(--gray-2);
+  line-height: 1.8;
+}
+.progress-log .log-line { border-bottom: 1px solid var(--gray-5); padding: 2px 0; }
+.progress-log .log-line:last-child { border-bottom: none; }
+.log-info { color: var(--primary); }
+.log-success { color: var(--success); }
+.log-error { color: var(--danger); }
+
+/* Feature importance chart */
+.chart-area {
+  margin-top: 16px; display: flex; flex-direction: column; gap: 8px;
+}
+.chart-bar { display: flex; align-items: center; gap: 12px; }
+.chart-label { font-size: 12px; color: var(--gray-2); min-width: 80px; text-align: right; }
+.chart-track { flex: 1; height: 20px; background: var(--gray-5); border-radius: 4px; overflow: hidden; }
+.chart-fill { height: 100%; background: var(--primary); border-radius: 4px; transition: width .6s; }
+.chart-value { font-size: 12px; color: var(--gray-3); min-width: 60px; }
+
+/* Class accuracy */
+.class-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;
+  margin-top: 12px;
+}
+.class-card {
+  border: 1px solid var(--gray-5); border-radius: var(--radius); padding: 14px 16px;
+}
+.class-card .class-name { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+.class-card .class-acc { font-size: 24px; font-weight: 700; color: var(--success); }
+.class-card .class-count { font-size: 12px; color: var(--gray-3); margin-top: 2px; }
+
+/* Loading spinner */
+.spinner {
+  display: inline-block; width: 16px; height: 16px;
+  border: 2px solid var(--gray-4); border-top-color: var(--primary);
+  border-radius: 50%; animation: spin .8s linear infinite; vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Alert */
+.alert {
+  padding: 12px 16px; border-radius: var(--radius); font-size: 13px;
+  margin-bottom: 16px; display: flex; align-items: flex-start; gap: 8px;
+}
+.alert-info { background: var(--primary-light); color: var(--primary); }
+.alert-error { background: #fef0ef; color: var(--danger); }
+.alert-success { background: #e8f8ef; color: var(--success); }
+
+pre { background: var(--gray-6); padding: 16px; border-radius: 4px; font-size: 12px; overflow-x: auto; }
+
+/* Nav tabs */
+.nav-tabs {
+  display: flex; gap: 4px; border-bottom: 1px solid var(--gray-5); margin-bottom: 20px;
+}
+.nav-tab {
+  padding: 8px 20px; font-size: 14px; cursor: pointer; border: none; background: none;
+  color: var(--gray-3); border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: all .2s;
+}
+.nav-tab:hover { color: var(--gray-1); }
+.nav-tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+.nav-tab:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Feature inputs grid */
+.feat-inputs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.feat-input-group { display: flex; flex-direction: column; gap: 4px; }
+.feat-input-group label { font-size: 12px; color: var(--gray-2); font-weight: 500; }
+.feat-input-group input {
+  height: 32px; padding: 0 10px; border: 1px solid var(--gray-4); border-radius: 4px;
+  font-size: 13px; color: var(--gray-1); outline: none;
+}
+.feat-input-group input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(0,82,217,.12);
+}
+
+/* Prediction result */
+.pred-result-card {
+  background: var(--primary-light);
+  border-radius: var(--radius);
+  padding: 28px;
+  text-align: center;
+  margin: 20px 0;
+}
+.pred-result-card .pred-label { font-size: 14px; color: var(--primary); margin-bottom: 8px; font-weight: 500; }
+.pred-result-card .pred-class { font-size: 48px; font-weight: 800; color: var(--primary); line-height: 1.2; }
+.pred-result-card .pred-confidence { font-size: 16px; color: var(--gray-2); margin-top: 8px; }
+.pred-result-card .pred-confidence strong { color: var(--primary); font-weight: 700; }
+
+.proba-bars { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 16px; }
+.proba-item { display: flex; flex-direction: column; gap: 4px; }
+.proba-item .proba-label { font-size: 13px; color: var(--gray-2); display: flex; justify-content: space-between; }
+.proba-item .proba-track { height: 8px; background: var(--gray-5); border-radius: 4px; overflow: hidden; }
+.proba-item .proba-fill { height: 100%; border-radius: 4px; transition: width .5s; }
+.proba-item .proba-fill.highlight { background: var(--primary); }
+.proba-item .proba-fill.normal { background: var(--gray-4); }
+
+.section-panel { display: none; }
+.section-panel.active { display: block; }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <h1>LightGBM 训练测试平台</h1>
+  <span class="subtitle">选择 CSV 文件进行训练</span>
+  <span class="badge" id="statusBadge">等待训练</span>
+  <span class="mode-tag online" id="modeTag">模型训练模式</span>
+</header>
+
+<div class="main">
+  <!-- 控制面板 -->
+  <div class="card">
+    <div class="card-title">⚙️ 模型训练控制</div>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+      <input type="file" id="trainCsvInput" accept=".csv" style="display:none" />
+      <button class="btn" id="selectFileBtn" onclick="document.getElementById('trainCsvInput').click()">
+        📂 选择训练文件
+      </button>
+      <span id="selectedFileName" style="font-size:13px;color:var(--gray-3);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+    </div>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+      <button class="btn btn-primary btn-lg" id="trainBtn" onclick="startTraining()" disabled>
+        🚀 开始训练
+      </button>
+      <button class="btn" id="resetBtn" onclick="resetAll()" disabled>
+        🔄 重置
+      </button>
+      <button class="btn btn-success" id="downloadStandaloneBtn" onclick="downloadStandalone()" disabled
+        title="生成含模型数据的独立 HTML 文件，下载后可离线使用">
+        💾 下载预测工具
+      </button>
+      <span id="trainBtnHint" style="font-size:13px;color:var(--gray-3);margin-left:8px;">
+        请先选择一个 CSV 文件（预测目标：CKD包装类型，空值行自动过滤）
+      </span>
+    </div>
+    <div class="progress-area" id="progressArea" style="display:none;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <span class="spinner" id="trainSpinner"></span>
+        <span id="progressText">正在训练...</span>
+      </div>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-fill" id="progressBar"></div>
+      </div>
+      <div class="progress-log" id="progressLog"></div>
+    </div>
+  </div>
+
+  <!-- 结果区域 -->
+  <div id="resultArea" style="display:none;">
+
+    <!-- 导航 -->
+    <div class="nav-tabs">
+      <button class="nav-tab active" id="tabTrain" onclick="switchTab('train')">📊 训练结果</button>
+      <button class="nav-tab" id="tabPredict" onclick="switchTab('predict')" disabled>🔮 预测</button>
+    </div>
+
+    <!-- 训练结果 Tab -->
+    <div class="section-panel active" id="trainPanel">
+      <div class="stats-grid">
+        <div class="stat-card accuracy highlight">
+          <div class="stat-label">测试集准确率</div>
+          <div class="stat-value" id="statAccuracy">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">测试样本数</div>
+          <div class="stat-value" id="statTestNum">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">训练样本数</div>
+          <div class="stat-value" id="statTrainNum">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">树的数量</div>
+          <div class="stat-value" id="statTrees">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">特征数量</div>
+          <div class="stat-value" id="statFeatures">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">类别数量</div>
+          <div class="stat-value" id="statClasses">—</div>
+        </div>
+      </div>
+
+      <div class="card" id="classAccuracyCard">
+        <div class="card-title">📊 各类别准确率</div>
+        <div class="class-grid" id="classAccuracyGrid"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🌲 特征重要性（Top 15）</div>
+        <div class="alert alert-info" style="margin-bottom:12px;">
+          基于 gain 指标计算，反映各特征对模型预测的贡献度
+        </div>
+        <div class="chart-area" id="featImportanceChart"></div>
+      </div>
+
+      <div class="card" id="rawDataArea" style="display:none;">
+        <div class="card-title" style="cursor:pointer;" onclick="toggleRawData()">
+          📋 原始训练结果 JSON <span style="font-size:12px;color:var(--gray-3);font-weight:400;">（点击展开）</span>
+        </div>
+        <div id="rawDataBody" style="display:none;">
+          <pre id="rawDataPre"></pre>
+        </div>
+      </div>
+
+      <div class="card" id="predictUrlCard">
+        <div class="card-title">🔗 预测工具地址</div>
+        <div class="alert alert-success">
+          训练完成！以下地址可独立进行预测，无需启动 Python 服务。<br/>
+          关闭训练页面后仍可使用，模型数据已内置在页面中。
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+          <code id="predictUrlText" style="flex:1;min-width:200px;padding:10px 14px;background:var(--gray-6);border-radius:4px;font-size:14px;word-break:break-all;border:1px solid var(--gray-5);"></code>
+          <button class="btn" onclick="copyPredictUrl()">📋 复制地址</button>
+          <button class="btn btn-primary" onclick="window.open('/predict','_blank')">➡️ 打开预测工具</button>
+        </div>
+      </div>
+    </div><!-- /trainPanel -->
+  </div><!-- /resultArea -->
+
+    <!-- 预测 Tab -->
+    <div class="section-panel" id="predictPanel">
+      <div class="card">
+        <div class="card-title">🔮 手动输入特征进行预测 <span id="predictModeHint" style="font-size:12px;color:var(--gray-3);font-weight:400;"></span></div>
+        <div class="alert alert-info">
+          请输入各特征值（共 <span id="featCountLabel">35</span> 个），系统将基于模型输出预测结果。
+          <br/><span style="font-size:12px;color:var(--gray-3);">提示：点击"自动填充"将根据训练数据分布随机生成特征值；"零件质量要求"请从下拉框选择</span>
+        </div>
+        <div style="margin-bottom:12px;display:flex;gap:10px;">
+          <button class="btn btn-primary" id="autoFillBtn" onclick="autoFillFeatures()">📋 自动填充</button>
+          <button class="btn" id="clearFeatBtn" onclick="clearFeatureInputs()">🗑 清空</button>
+          <input type="file" id="csvFileInput2" accept=".csv" style="display:none" onchange="handleCsvFile2(this.files[0])" />
+        </div>
+        <div class="feat-inputs-grid" id="featInputsGrid"></div>
+        <div style="display:flex;gap:12px;margin-top:8px;">
+          <button class="btn btn-primary btn-lg" id="predictBtn" onclick="startPrediction()">
+            开始预测
+          </button>
+          <button class="btn btn-lg" id="predictResetBtn" onclick="resetPrediction()">重置</button>
+        </div>
+      </div>
+
+      <div class="card" id="predResultCard" style="display:none;">
+        <div class="card-title">📌 预测结果</div>
+        <div class="pred-result-card" id="predMainResult">
+          <div class="pred-label">预测类别</div>
+          <div class="pred-class" id="predClassValue">—</div>
+          <div class="pred-confidence">置信度：<strong id="predConfidence">—</strong></div>
+        </div>
+        <div class="alert alert-info" style="margin-top:16px;">各类别概率分布</div>
+        <div class="proba-bars" id="probaBars"></div>
+      </div>
+
+      <div class="card" id="predErrorCard" style="display:none;">
+        <div class="alert alert-error" id="predErrorMsg"></div>
+      </div>
+
+      <!-- 批量预测 -->
+      <div class="card">
+        <div class="card-title">📦 批量预测</div>
+        <div class="alert alert-info">
+          选择包含特征数据的 CSV 文件（需包含表头），将对每一行数据进行预测并输出结果。
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+          <button class="btn btn-primary" id="batchSelectBtn" onclick="document.getElementById('batchCsvInput').click()">
+            📂 选择 CSV 文件
+          </button>
+          <span id="batchFileName" style="font-size:13px;color:var(--gray-3);"></span>
+          <input type="file" id="batchCsvInput" accept=".csv" style="display:none" onchange="handleBatchCsv(this.files[0])" />
+        </div>
+        <div style="display:flex;gap:10px;margin-bottom:12px;">
+          <button class="btn btn-success btn-lg" id="batchPredictBtn" onclick="runBatchPrediction()" disabled>
+            🚀 开始批量预测
+          </button>
+          <button class="btn btn-lg" id="batchExportBtn" onclick="exportBatchResults()" disabled>
+            💾 导出 CSV
+          </button>
+          <button class="btn btn-lg" id="batchClearBtn" onclick="clearBatchResults()">
+            🗑 清空
+          </button>
+        </div>
+        <div id="batchProgressArea" style="display:none;margin-bottom:12px;">
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-fill" id="batchProgressBar"></div>
+          </div>
+          <div style="font-size:13px;color:var(--gray-3);margin-top:4px;" id="batchProgressText"></div>
+        </div>
+        <div id="batchResultsArea" style="display:none;">
+          <div style="margin-bottom:8px;font-size:13px;color:var(--gray-2);">
+            共 <strong id="batchResultCount">0</strong> 条预测结果
+          </div>
+          <div style="overflow-x:auto;max-height:400px;overflow-y:auto;border:1px solid var(--gray-5);border-radius:4px;">
+            <table id="batchResultsTable" style="width:100%;border-collapse:collapse;font-size:13px;">
+              <thead id="batchResultsHead" style="position:sticky;top:0;background:var(--gray-6);z-index:1;"></thead>
+              <tbody id="batchResultsBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 错误信息 -->
+  <div class="card" id="errorCard" style="display:none;">
+    <div class="alert alert-error" id="errorMsg"></div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════
+// 状态
+// ══════════════════════════════════════════════════════════════════════
+let _featureNames = [];
+let _classNames = [];
+
+// _featureColMap: { processedName -> { origIdx, isNumeric, catValues } }
+// 用于 buildFeatureInputs 生成正确的 DOM id，也用于 getFeatureValues 回查原始列
+let _featureColMap = {};
+let _modelData = null;        // 从服务端加载的模型 JSON
+let _standaloneMode = false;  // 是否为离线模式
+let _trainCsvFile = null;     // 用户选择的训练 CSV 文件
+let _qualitySelectOptions = []; // 零件质量要求下拉选项（去重）
+
+// 核心防护枚举项（来自训练数据的唯一值）
+const QUALITY_ITEMS = [
+  '防变形','防潮湿','防冲击','防丢失','防腐蚀','防划伤','防挤压','防静电',
+  '防老化','防磨损','防碰撞','防破碎','防破损','防损坏','防损伤','防脱落',
+  '防污损','防锈蚀','防油污','防震动'
+];
+
+// 解析"零件质量要求"文本，返回 qualityFlags: { '质量_防XXX': 0|1 }
+function parseQualityText(text) {
+  const flags = {};
+  QUALITY_ITEMS.forEach(item => { flags['质量_' + item] = 0; });
+  if (!text) return { rawText: '', qualityFlags: flags };
+  const m = text.match(/核心防护：([^；]+)/);
+  if (!m) return { rawText: text, qualityFlags: flags };
+  const coreItems = m[1].split('、');
+  coreItems.forEach(item => {
+    if (flags.hasOwnProperty('质量_' + item)) flags['质量_' + item] = 1;
+  });
+  return { rawText: text, qualityFlags: flags };
+}
+
+// 对 CSV 文本预处理：过滤空 label、展开质量要求为二进制特征列
+// 仅排除确定非数值的列（ID/名称/描述文本），其余自动判断是否为数值
+function preprocessCSV(csvText) {
+  const lines = csvText.trim().split('\n');
+  if (lines.length < 2) return csvText;
+  const header = lines[0].split(',').map(h => h.trim());
+  const labelIdx = header.indexOf('CKD包装类型');
+  console.log('[preprocessCSV] raw header:', header);
+  console.log('[preprocessCSV] labelIdx:', labelIdx, labelIdx >= 0 ? header[labelIdx] : 'NOT FOUND');
+  if (labelIdx < 0) {
+    console.error('[preprocessCSV] CKD包装类型 not found in CSV header! Available columns:', header);
+    alert('错误：CSV 文件中没有" CKD包装类型"列。请确认使用 test_input_total.csv（已合并 BOM 数据）而非 test_input.csv。');
+    return csvText;
+  }
+
+  // 仅排除真正的非特征列（ID类）
+  // 零件质量要求：展开为20个二进制质量特征（在下方单独处理）
+  const ALWAYS_EXCLUDE = new Set(['零件号', '零件名称', 'CKD包装类型']);
+
+  // 判断某列是否为"可解析为数值"的列
+  // 只要存在至少一个能 parseFloat 的非空值，就认为是数值列
+  function isNumericCol(colIdx) {
+    if (ALWAYS_EXCLUDE.has(header[colIdx])) return false;
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(',');
+      const val = (cols[colIdx] || '').trim();
+      if (val !== '' && !isNaN(parseFloat(val))) return true;
+    }
+    return false;
+  }
+
+  // 过滤 label 为空的行，同时收集唯一的核心防护组合用于下拉选项
+  const dataLines = [lines[0]];
+  const uniqueQualityTexts = new Set();
+  const qIdx = header.indexOf('零件质量要求');
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(',');
+    const labelVal = (cols[labelIdx] || '').trim();
+    if (labelVal !== '') {
+      dataLines.push(lines[i]);
+      if (qIdx >= 0 && cols[qIdx]) {
+        const m = cols[qIdx].match(/核心防护：([^；]+)/);
+        if (m) uniqueQualityTexts.add(m[1]);
+      }
+    }
+  }
+  _qualitySelectOptions = Array.from(uniqueQualityTexts).sort();
+
+  // 所有特征列索引（排除 label、ALWAYS_EXCLUDE）
+  const featureColIndices = [];
+  for (let i = 0; i < header.length; i++) {
+    if (i === labelIdx) continue;
+    if (ALWAYS_EXCLUDE.has(header[i])) continue;
+    featureColIndices.push(i);
+  }
+
+  // 建立特征名→原始列信息映射（供 DOM id 回查用）
+  // 原始列信息 {origIdx, isNumeric}
+  _featureColMap = {};
+  for (const idx of featureColIndices) {
+    if (idx === qIdx) continue; // 零件质量要求在下面单独处理
+    const colName = header[idx];
+    _featureColMap[colName] = { origIdx: idx, isNumeric: isNumericCol(idx) };
+  }
+  console.log('[preprocessCSV] feature col indices:', featureColIndices);
+
+  // 新表头：所有特征列 + 20个质量二进制列 + label
+  const newHeader = featureColIndices.filter(i => i !== qIdx).map(i => header[i]);
+  QUALITY_ITEMS.forEach(item => {
+    newHeader.push('质量_' + item);
+    // 质量特征没有原始列索引，用 item 名做标识，origIdx=-1
+    _featureColMap['质量_' + item] = { origIdx: -1, isNumeric: true, itemName: item };
+  });
+  newHeader.push('label');
+  console.log('[preprocessCSV] newHeader:', newHeader);
+
+  // 构建新行
+  const newLines = [newHeader.join(',')];
+  for (let i = 1; i < dataLines.length; i++) {
+    const cols = dataLines[i].split(',');
+    const labelVal = (cols[labelIdx] || '').trim();
+    const newCols = [];
+    for (const idx of featureColIndices) {
+      if (idx === qIdx) continue; // 零件质量要求跳过，在下方单独展开
+      const v = (cols[idx] || '').trim();
+      if (isNumericCol(idx)) {
+        // 数值列：解析数字，垃圾尾缀值置空
+        const p = parseFloat(v);
+        if (isNaN(p)) { newCols.push(''); continue; }
+        const numPart = v.match(/^[\-\+]?[\d.]+(?:[eE][\-\+]?\d+)?/);
+        const afterNum = numPart ? v.slice(numPart[0].length) : v;
+        if (afterNum.replace(/\s/g, '') !== '') { newCols.push(''); continue; }
+        newCols.push(v);
+      } else {
+        // 非数值列：保持原字符串（Python 做 label encoding）
+        newCols.push(v);
+      }
+    }
+    // 展开 20 个质量二进制特征
+    if (qIdx >= 0) {
+      const { qualityFlags } = parseQualityText(cols[qIdx] || '');
+      QUALITY_ITEMS.forEach(item => newCols.push(String(qualityFlags['质量_' + item])));
+    } else {
+      QUALITY_ITEMS.forEach(() => newCols.push('0'));
+    }
+    newCols.push(labelVal);
+    newLines.push(newCols.join(','));
+  }
+  console.log('[preprocessCSV] newHeader:', newHeader);
+  console.log('[preprocessCSV] first data line cols:', newLines.length > 1 ? newLines[1].split(',').length : 0);
+  console.log('[preprocessCSV] first data line:', newLines.length > 1 ? newLines[1] : '');
+  return newLines.join('\n');
+}
+
+// 批量预测相关
+let _batchCsvData = null;         // { header: [...], rows: [[...], ...] }
+let _batchResults = null;         // 预测结果数组
+
+// 检测是否已嵌入模型（下载的独立版）
+if (typeof LGBMODEL !== 'undefined') {
+  _modelData = LGBMODEL;
+  _standaloneMode = true;
+  _featureNames = LGBMODEL.feature_names || [];
+  _classNames = LGBMODEL.class_names || [];
+}
+
+// 训练文件选择
+document.getElementById('trainCsvInput').addEventListener('change', function() {
+  const file = this.files[0];
+  _trainCsvFile = file;
+  const nameEl = document.getElementById('selectedFileName');
+  const hintEl = document.getElementById('trainBtnHint');
+  const trainBtn = document.getElementById('trainBtn');
+  if (file) {
+    nameEl.textContent = '已选: ' + file.name;
+    hintEl.textContent = '已选 ' + file.name + '，点击"开始训练"';
+    trainBtn.disabled = false;
+  } else {
+    nameEl.textContent = '';
+    hintEl.textContent = '请先选择一个 CSV 文件（含 label 列）';
+    trainBtn.disabled = true;
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════
+// 工具函数
+// ══════════════════════════════════════════════════════════════════════
+function setStatus(text, state) {
+  const badge = document.getElementById('statusBadge');
+  badge.textContent = text;
+  badge.className = 'badge';
+  if (state === 'ready') badge.style.cssText = 'background:#e8f8ef;color:#2ba471;';
+  else if (state === 'training') badge.style.cssText = 'background:#fef3e8;color:#e37318;';
+  else if (state === 'done') badge.style.cssText = 'background:#e8f8ef;color:#2ba471;';
+  else if (state === 'error') badge.style.cssText = 'background:#fef0ef;color:#d54941;';
+  else badge.style.cssText = '';
+}
+
+function log(msg, type='') {
+  const el = document.getElementById('progressLog');
+  const cls = type ? `log-${type}` : '';
+  el.innerHTML += `<div class="log-line ${cls}">${fmtTime()} ${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+function fmtTime() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+}
+
+function animateProgress(pct, text) {
+  document.getElementById('progressBar').style.width = pct + '%';
+  if (text) document.getElementById('progressText').textContent = text;
+}
+
+function updateModeTag() {
+  const tag = document.getElementById('modeTag');
+  if (_standaloneMode) {
+    tag.textContent = '离线模式';
+    tag.className = 'mode-tag offline';
+  } else {
+    tag.textContent = '联网模式';
+    tag.className = 'mode-tag online';
+  }
+  const hint = document.getElementById('predictModeHint');
+  if (hint) {
+    hint.textContent = _standaloneMode ? '（离线预测，无网络请求）' : '（服务端预测）';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// LightGBM 纯 JS 预测引擎
+// ══════════════════════════════════════════════════════════════════════
+const LGBPredictor = (function() {
+  /**
+   * LightGBM Booster JSON structure:
+   * {
+   *   num_class: N,
+   *   class_names: [...],
+   *   objective: 'multiclass'|'binary',
+   *   feature_names: [...],
+   *   trees: {
+   *     tree_info: [{tree_index, tree_structure: {...}}, ...]
+   *   }
+   * }
+   */
+
+  function predict(model, features) {
+    const numClasses = model.num_classes || 2;
+    const treeInfo = model.trees && model.trees.tree_info ? model.trees.tree_info : [];
+    const isMulti = numClasses > 2;
+
+    // 收集每棵树的 leaf_value
+    const classContribs = new Array(numClasses).fill(0.0);
+
+    for (const treeData of treeInfo) {
+      const tree = treeData.tree_structure;
+      const classIndex = treeData.tree_index;
+      // num_class 棵树循环对应 class 0, class 1, ...
+      // 如果是 binary (numClass=2)，只有 1 棵树，classIndex 0
+      const targetClass = isMulti ? classIndex : 0;
+      if (targetClass >= numClasses) continue;
+
+      const leafValue = getLeafValue(tree, features);
+      classContribs[targetClass] += leafValue;
+    }
+
+    // 转换为概率（softmax for multiclass, sigmoid for binary）
+    if (isMulti) {
+      // softmax
+      const maxC = Math.max(...classContribs);
+      const exps = classContribs.map(c => Math.exp(c - maxC));
+      const sumExp = exps.reduce((a, b) => a + b, 0);
+      const probs = exps.map(e => e / sumExp);
+      return { probs, predictedClassIdx: probs.indexOf(Math.max(...probs)) };
+    } else {
+      // sigmoid
+      const sigmoid = 1.0 / (1.0 + Math.exp(-classContribs[0]));
+      return { probs: [1.0 - sigmoid, sigmoid], predictedClassIdx: sigmoid > 0.5 ? 1 : 0 };
+    }
+  }
+
+  function getLeafValue(node, features) {
+    // 内部节点
+    if (node.left_child !== undefined && node.right_child !== undefined) {
+      const featVal = features[node.split_feature];
+      // NaN 或 undefined 均视为缺失值，走左子节点
+      if (featVal === undefined || isNaN(featVal)) {
+        return getLeafValue(node.left_child, features);
+      }
+      if (featVal <= node.threshold) {
+        return getLeafValue(node.left_child, features);
+      } else {
+        return getLeafValue(node.right_child, features);
+      }
+    }
+    // 叶子节点
+    return node.leaf_value !== undefined ? node.leaf_value : 0.0;
+  }
+
+  return { predict };
+})();
+
+// ══════════════════════════════════════════════════════════════════════
+// 训练
+// ══════════════════════════════════════════════════════════════════════
+async function startTraining() {
+  const btn = document.getElementById('trainBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  btn.disabled = true;
+  resetBtn.disabled = true;
+  document.getElementById('resultArea').style.display = 'none';
+  document.getElementById('errorCard').style.display = 'none';
+  document.getElementById('progressArea').style.display = 'block';
+  document.getElementById('progressLog').innerHTML = '';
+
+  setStatus('训练中...', 'training');
+  log('正在预处理 CSV（过滤空标签、展开质量特征）...', 'info');
+
+  let fakePct = 0;
+  const fakeTimer = setInterval(() => {
+    fakePct = Math.min(fakePct + Math.random() * 5, 85);
+    animateProgress(fakePct, `正在训练 LightGBM（${Math.round(fakePct)}%）...`);
+  }, 800);
+
+  try {
+    let csvText = '';
+    if (_trainCsvFile) {
+      csvText = await _trainCsvFile.text();
+    }
+    // 预处理：过滤空 label、展开质量要求特征列
+    const processedCsv = preprocessCSV(csvText);
+    console.log('[startTraining] processedCsv first 3 lines:', processedCsv.split('\n').slice(0, 3).join('\n'));
+    console.log('[startTraining] processedCsv cols in header:', processedCsv.split('\n')[0].split(',').length);
+    log('预处理完成，有效样本行数：' + (processedCsv.trim().split('\n').length - 1), 'info');
+
+    const formData = new FormData();
+    const processedFile = new File([processedCsv], _trainCsvFile ? _trainCsvFile.name : 'train.csv', { type: 'text/csv' });
+    formData.append('file', processedFile);
+    const resp = await fetch('/api/train', { method: 'POST', body: formData });
+    clearInterval(fakeTimer);
+    animateProgress(100, '训练完成！');
+
+    const data = await resp.json();
+
+    if (!data.success) {
+      log('❌ 训练失败: ' + data.error, 'error');
+      setStatus('训练失败', 'error');
+      const ec = document.getElementById('errorCard');
+      const em = document.getElementById('errorMsg');
+      if (ec) ec.style.display = 'block';
+      if (em) em.textContent = '错误: ' + data.error;
+      btn.disabled = false;
+      return;
+    }
+
+    log('✅ 训练成功！开始加载模型...', 'success');
+
+    // 如果是联网模式，加载模型 JSON
+    if (!_standaloneMode) {
+      log('获取模型数据（供离线预测）...', 'info');
+      try {
+        const modelResp = await fetch('/api/model');
+        const modelJson = await modelResp.json();
+        if (modelJson.success) {
+          _modelData = modelJson.data;
+          _featureNames = _modelData.feature_names || [];
+          _classNames = _modelData.class_names || [];
+          console.log('[api/model response] feature_names count:', _modelData.feature_names.length, _modelData.feature_names);
+          log('✅ 模型数据已加载，可离线预测工具', 'success');
+          document.getElementById('downloadStandaloneBtn').disabled = false;
+        }
+      } catch (e) {
+        log('⚠ 模型数据加载失败（' + e.message + '），无法下载预测工具', 'error');
+      }
+    }
+
+    log('✅ 全部完成！', 'success');
+    document.getElementById('resultArea').style.display = 'block';
+    renderResult(data.data);
+    setStatus('训练完成', 'done');
+    resetBtn.disabled = false;
+    btn.disabled = false;
+    // 显示预测工具 URL
+    const base = window.location.origin;
+    const urlEl = document.getElementById('predictUrlText');
+    if (urlEl) urlEl.textContent = base + '/predict';
+    document.getElementById('tabPredict').disabled = false;
+
+    buildFeatureInputs();
+    updateModeTag();
+
+  } catch (e) {
+    clearInterval(fakeTimer);
+    log('❌ 网络错误: ' + e.message, 'error');
+    setStatus('网络错误', 'error');
+    const ec = document.getElementById('errorCard');
+    const em = document.getElementById('errorMsg');
+    if (ec) ec.style.display = 'block';
+    if (em) em.textContent = '请求失败: ' + e.message;
+    btn.disabled = false;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// 渲染训练结果
+// ══════════════════════════════════════════════════════════════════════
+function renderResult(data) {
+  const setText = (id, txt) => { const e = document.getElementById(id); if (e) e.textContent = txt; };
+  setText('statAccuracy', data.accuracy_pct);
+  setText('statTestNum', data.num_test + ' 条');
+  setText('statTrainNum', data.num_train + ' 条');
+  setText('statTrees', data.num_trees);
+  setText('statFeatures', data.num_features + ' 个');
+  setText('statClasses', data.num_classes + ' 类');
+  setText('featCountLabel', _featureNames.length);
+
+  const grid = document.getElementById('classAccuracyGrid');
+  if (data.per_class_accuracy && data.per_class_accuracy.length > 0 && grid) {
+    grid.innerHTML = data.per_class_accuracy.map(c =>
+      `<div class="class-card">
+        <div class="class-name">类别 ${c.class}</div>
+        <div class="class-acc">${(c.accuracy * 100).toFixed(1)}%</div>
+        <div class="class-count">样本数: ${c.count}</div>
+      </div>`
+    ).join('');
+    const card = document.getElementById('classAccuracyCard');
+    if (card) card.style.display = 'block';
+  }
+
+  const maxScore = data.feature_importance[0]?.[1] || 1;
+  const chart = document.getElementById('featImportanceChart');
+  if (chart) {
+    chart.innerHTML = data.feature_importance.map(([name, score]) => {
+      const pct = (score / maxScore * 100).toFixed(1);
+      return `<div class="chart-bar">
+        <span class="chart-label">${name}</span>
+        <div class="chart-track"><div class="chart-fill" style="width:${pct}%"></div></div>
+        <span class="chart-value">${score.toFixed(1)}</span>
+      </div>`;
+    }).join('');
+  }
+
+  const rawPre = document.getElementById('rawDataPre');
+  if (rawPre) rawPre.textContent = JSON.stringify(data, null, 2);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// 特征输入
+// ══════════════════════════════════════════════════════════════════════
+function buildFeatureInputs() {
+  const grid = document.getElementById('featInputsGrid');
+  const qualityIdx = _featureNames.indexOf('零件质量要求');
+  const hasQuality = qualityIdx >= 0;
+  console.log('[buildFeatureInputs] _featureNames count:', _featureNames.length, _featureNames);
+
+  // 普通数值特征
+  let html = '';
+  _featureNames.forEach((name) => {
+    if (name === '零件质量要求') {
+      // 渲染为下拉框，内容动态填充
+      html += `<div class="feat-input-group" id="qualitySelectGroup">
+        <label for="qualitySelect">零件质量要求</label>
+        <select id="qualitySelect" style="height:32px;padding:0 10px;border:1px solid var(--gray-4);border-radius:4px;font-size:13px;color:var(--gray-1);outline:none;width:100%;">
+          <option value="">-- 请选择 --</option>
+          ${_qualitySelectOptions.map(opt => `<option value="${opt}">${opt}</option>`).join('')}
+        </select>
+      </div>
+      <div style="grid-column:1/-1;margin-top:4px;">
+        <div style="font-size:12px;color:var(--gray-2);font-weight:500;margin-bottom:8px;">核心防护项目（质量特征）</div>
+        <div id="qualityCheckboxes" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+      </div>`;
+    } else if (name.startsWith('质量_')) {
+      // 质量二进制特征由下拉框联动，不单独渲染输入框
+    } else {
+      // 查原始列信息，决定是数值输入还是分类下拉
+      // 训练模式：_featureColMap 有值；独立模式：用 feature_categories 判断
+      const colInfo = _featureColMap[name];
+      const catEnc = (_modelData && _modelData.feature_cat_encoding) || {};
+      const isCategorical = (colInfo && !colInfo.isNumeric) ||
+                            (!colInfo && catEnc.hasOwnProperty(name));
+      if (colInfo) {
+        // 训练模式：DOM id 含原始列索引
+        const id = isCategorical ? `feat_cat${colInfo.origIdx}` : `feat${colInfo.origIdx}`;
+        if (isCategorical) {
+          const cats = (_modelData && _modelData.feature_categories && _modelData.feature_categories[name]) || [];
+          html += `<div class="feat-input-group"><label for="${id}">${name}</label><select id="${id}" style="height:32px;padding:0 10px;border:1px solid var(--gray-4);border-radius:4px;font-size:13px;color:var(--gray-1);outline:none;width:100%;"><option value="">-- 请选择 --</option>${cats.map(c => `<option value="${c}">${c}</option>`).join('')}</select></div>`;
+        } else {
+          html += `<div class="feat-input-group"><label for="${id}">${name}</label><input type="number" id="${id}" placeholder="请输入数值" step="any" /></div>`;
+        }
+      } else {
+        // 独立模式：DOM id 用特征名
+        const id = 'feat_' + name;
+        if (isCategorical) {
+          const cats = (_modelData && _modelData.feature_categories && _modelData.feature_categories[name]) || [];
+          html += `<div class="feat-input-group"><label for="${id}">${name}</label><select id="${id}" style="height:32px;padding:0 10px;border:1px solid var(--gray-4);border-radius:4px;font-size:13px;color:var(--gray-1);outline:none;width:100%;"><option value="">-- 请选择 --</option>${cats.map(c => `<option value="${c}">${c}</option>`).join('')}</select></div>`;
+        } else {
+          html += `<div class="feat-input-group"><label for="${id}">${name}</label><input type="number" id="${id}" placeholder="请输入数值" step="any" /></div>`;
+        }
+      }
+    }
+  });
+  grid.innerHTML = html;
+
+  // 质量要求下拉选择联动勾选框
+  const selectEl = document.getElementById('qualitySelect');
+  const checkboxesEl = document.getElementById('qualityCheckboxes');
+  if (selectEl && checkboxesEl) {
+    // 先渲染所有勾选框（只读，由下拉联动）
+    checkboxesEl.innerHTML = QUALITY_ITEMS.map(item =>
+      `<label style="display:flex;align-items:center;gap:4px;font-size:13px;color:var(--gray-2);cursor:pointer;">
+        <input type="checkbox" id="qc_${item}" disabled /> ${item}
+      </label>`
+    ).join('');
+
+    selectEl.addEventListener('change', function() {
+      const { qualityFlags } = parseQualityText(this.value);
+      QUALITY_ITEMS.forEach(item => {
+        const cb = document.getElementById('qc_' + item);
+        if (cb) cb.checked = qualityFlags['质量_' + item] === 1;
+      });
+    });
+  }
+}
+
+function autoFillFeatures() {
+  // 根据训练数据的特征分布随机生成填充值
+  const stats = _modelData && _modelData.feature_stats;
+  if (!stats || stats.length === 0) {
+    // 联网模式：从 /api/model 获取特征统计
+    if (!_standaloneMode) {
+      fetch('/api/model').then(r => r.json()).then(data => {
+        if (data.success) {
+          _modelData.feature_stats = data.data.feature_stats;
+          doFill(data.data.feature_stats);
+        } else {
+          alert('获取特征统计失败');
+        }
+      }).catch(() => alert('获取特征统计失败'));
+    } else {
+      alert('特征统计不可用');
+    }
+    return;
+  }
+  doFill(stats);
+}
+
+function doFill(stats) {
+  stats.forEach((s, i) => {
+    const el = document.getElementById('feat' + i);
+    if (!el) return;
+    // 用 min + rand * (max - min) 生成范围内随机值
+    const range = s.max - s.min;
+    const val = range > 0 ? s.min + Math.random() * range : s.min;
+    el.value = parseFloat(val.toFixed(6));
+  });
+}
+
+function handleCsvFile2(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const text = e.target.result;
+      const lines = text.trim().split('\n');
+      if (lines.length < 2) return;
+      const header = lines[0].split(',').map(h => h.trim());
+      const dataLines = lines.slice(1);
+      if (dataLines.length === 0) return;
+      const randomIdx = Math.floor(Math.random() * dataLines.length);
+      const values = dataLines[randomIdx].split(',');
+
+      // 建立 header → value 映射
+      const rowObj = {};
+      header.forEach((h, i) => { rowObj[h] = values[i] || ''; });
+
+      // 填值：使用 _featureColMap 查找正确的 DOM id（训练模式），或 feat_${name}（独立模式）
+      _featureNames.forEach((fn) => {
+        if (fn === '零件质量要求') {
+          const selectEl = document.getElementById('qualitySelect');
+          if (selectEl) {
+            const opts = selectEl.options;
+            let matched = false;
+            for (let o = 0; o < opts.length; o++) {
+              if (rowObj['零件质量要求'] && rowObj['零件质量要求'].includes(opts[o].value)) {
+                selectEl.selectedIndex = o;
+                opts[o].selected = true;
+                selectEl.dispatchEvent(new Event('change'));
+                matched = true;
+                break;
+              }
+            }
+            if (!matched) {
+              selectEl.selectedIndex = 0;
+              QUALITY_ITEMS.forEach(item => {
+                const cb = document.getElementById('qc_' + item);
+                if (cb) cb.checked = false;
+              });
+            }
+          }
+        } else if (fn.startsWith('质量_')) {
+          // 质量特征由下拉框联动，skip
+        } else {
+          const colInfo = _featureColMap[fn];
+          const catEnc = (_modelData && _modelData.feature_cat_encoding) || {};
+          const isCategorical = (colInfo && !colInfo.isNumeric) ||
+                                (!colInfo && catEnc.hasOwnProperty(fn));
+          if (colInfo) {
+            // 训练模式：有原始列索引
+            const { origIdx } = colInfo;
+            if (!isCategorical) {
+              const el = document.getElementById('feat' + origIdx);
+              if (el) el.value = rowObj[fn] || '';
+            } else {
+              const el = document.getElementById('feat_cat' + origIdx);
+              if (el) {
+                const opts = el.options;
+                let matched = false;
+                for (let o = 0; o < opts.length; o++) {
+                  if (rowObj[fn] && String(opts[o].value) === String(rowObj[fn])) {
+                    el.selectedIndex = o; opts[o].selected = true; matched = true; break;
+                  }
+                }
+                if (!matched) el.selectedIndex = 0;
+              }
+            }
+          } else {
+            // 独立模式：DOM id 用特征名
+            const elId = 'feat_' + fn;
+            const el = document.getElementById(elId);
+            if (el) el.value = rowObj[fn] || '';
+          }
+        }
+      });
+    } catch(err) { alert('自动填充失败: ' + err.message); }
+  };
+  reader.onerror = function() { alert('文件读取失败'); };
+  reader.readAsText(file);
+}
+
+function clearFeatureInputs() {
+  _featureNames.forEach((fn) => {
+    if (fn === '零件质量要求') {
+      const sel = document.getElementById('qualitySelect');
+      if (sel) sel.selectedIndex = 0;
+      QUALITY_ITEMS.forEach(item => {
+        const cb = document.getElementById('qc_' + item);
+        if (cb) cb.checked = false;
+      });
+    } else if (fn.startsWith('质量_')) {
+      // 质量特征由下拉框联动，skip
+    } else {
+      const colInfo = _featureColMap[fn];
+      const catEnc = (_modelData && _modelData.feature_cat_encoding) || {};
+      const isCategorical = (colInfo && !colInfo.isNumeric) ||
+                            (!colInfo && catEnc.hasOwnProperty(fn));
+      if (colInfo) {
+        const el = document.getElementById(isCategorical ? 'feat_cat' + colInfo.origIdx : 'feat' + colInfo.origIdx);
+        if (el) el.value = '';
+      } else {
+        const el = document.getElementById('feat_' + fn);
+        if (el) el.value = '';
+      }
+    }
+  });
+}
+
+function getFeatureValues() {
+  const features = [];
+  for (let i = 0; i < _featureNames.length; i++) {
+    const name = _featureNames[i];
+    if (name === '零件质量要求') {
+      // 零件质量要求不参与数值特征，由质量二进制列替代
+      continue;
+    } else if (name.startsWith('质量_')) {
+      // 质量二进制特征：取勾选框的值
+      const itemName = name.replace('质量_', '');
+      const cb = document.getElementById('qc_' + itemName);
+      features.push(cb && cb.checked ? 1 : 0);
+    } else {
+      // 查原始列信息，判断是数值还是分类特征
+      // _featureColMap 在训练阶段由 preprocessCSV 填充（联网/训练模式）
+      // 在独立模式下为空，此时通过 feature_cat_encoding 判断是否为分类特征
+      const colInfo = _featureColMap[name];
+      const catEnc = (_modelData && _modelData.feature_cat_encoding) || {};
+      const isCategorical = (colInfo && !colInfo.isNumeric) ||
+                            (!colInfo && catEnc.hasOwnProperty(name));
+      const origIdx = colInfo ? colInfo.origIdx : -1;
+      if (isCategorical) {
+        // 分类特征：从下拉框取值，转为整数编码
+        // 独立模式 DOM id: feat_${name}（来自 _build_predict_only_html）
+        // 训练模式 DOM id: feat_cat${origIdx}
+        const el = document.getElementById('feat_cat' + origIdx) ||
+                   document.getElementById('feat_' + name);
+        const val = el ? el.value.trim() : '';
+        if (val === '') { features.push(NaN); continue; }
+        const encoding = catEnc[name] || {};
+        const encoded = encoding[val];
+        if (encoded === undefined) return null;
+        features.push(encoded);
+      } else {
+        // 数值特征
+        // 独立模式 DOM id: feat_${name}；训练模式 DOM id: feat${origIdx}
+        const el = origIdx >= 0 ? document.getElementById('feat' + origIdx) :
+                   document.getElementById('feat_' + name);
+        const val = el ? el.value.trim() : '';
+        if (val === '') { features.push(NaN); continue; }
+        const v = parseFloat(val);
+        if (isNaN(v)) return null;
+        features.push(v);
+      }
+    }
+  }
+  return features;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// 预测
+// ══════════════════════════════════════════════════════════════════════
+async function startPrediction() {
+  const features = getFeatureValues();
+  if (features === null) {
+    document.getElementById('predErrorCard').style.display = 'block';
+    document.getElementById('predErrorMsg').textContent = '请检查输入：非空项必须为有效数字';
+    return;
+  }
+
+  document.getElementById('predResultCard').style.display = 'none';
+  document.getElementById('predErrorCard').style.display = 'none';
+  const btn = document.getElementById('predictBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> 预测中...';
+
+  try {
+    let result;
+    if (_standaloneMode && _modelData) {
+      // 纯前端预测（features 中可能有 NaN，由预测引擎处理）
+      result = LGBPredictor.predict(_modelData, features);
+      const predIdx = result.predictedClassIdx;
+      const className = _classNames[predIdx] || String(predIdx);
+      const confidence = result.probs[predIdx];
+
+      result = {
+        predicted_class: className,
+        predicted_class_idx: predIdx,
+        confidence: Math.round(confidence * 100, 2),
+        probability: result.probs[predIdx],
+        all_probabilities: _classNames.map((cn, i) => ({
+          class: cn,
+          probability: result.probs[i],
+        })),
+      };
+    } else {
+      // 服务端预测（NaN 转 None 传给 Flask）
+      const featuresForServer = features.map(v => (isNaN(v) ? null : v));
+      const resp = await fetch('/api/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ features: featuresForServer }),
+      });
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.error);
+      result = data.data;
+    }
+
+    renderPredictionResult(result);
+  } catch (e) {
+    document.getElementById('predErrorCard').style.display = 'block';
+    document.getElementById('predErrorMsg').textContent = '预测失败: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '开始预测';
+  }
+}
+
+function renderPredictionResult(result) {
+  document.getElementById('predClassValue').textContent = result.predicted_class;
+  document.getElementById('predConfidence').textContent = result.confidence + '%';
+
+  const maxProb = Math.max(...result.all_probabilities.map(p => p.probability));
+  const barsEl = document.getElementById('probaBars');
+  barsEl.innerHTML = result.all_probabilities.map(p => {
+    const pct = (p.probability / maxProb * 100).toFixed(1);
+    const isPredicted = String(p['class']) === String(result.predicted_class);
+    return `<div class="proba-item">
+      <div class="proba-label">
+        <span>类别 ${p['class']}</span>
+        <span>${(p.probability * 100).toFixed(1)}%</span>
+      </div>
+      <div class="proba-track">
+        <div class="proba-fill ${isPredicted ? 'highlight' : 'normal'}" style="width:${pct}%"></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('predResultCard').style.display = 'block';
+}
+
+function resetPrediction() {
+  clearFeatureInputs();
+  document.getElementById('predResultCard').style.display = 'none';
+  document.getElementById('predErrorCard').style.display = 'none';
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// 批量预测
+// ══════════════════════════════════════════════════════════════════════
+function handleBatchCsv(file) {
+  if (!file) return;
+  const nameEl = document.getElementById('batchFileName');
+  const btn = document.getElementById('batchPredictBtn');
+  if (file) {
+    nameEl.textContent = '已选: ' + file.name;
+    btn.disabled = false;
+  } else {
+    nameEl.textContent = '';
+    btn.disabled = true;
+  }
+  _batchCsvData = null;
+  _batchResults = null;
+  document.getElementById('batchResultsArea').style.display = 'none';
+  document.getElementById('batchExportBtn').disabled = true;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const text = e.target.result;
+      const lines = text.trim().split('\n');
+      if (lines.length < 2) { alert('CSV 文件内容不足'); return; }
+      const header = lines[0].split(',').map(h => h.trim());
+      const rows = lines.slice(1).map(line => line.split(',').map(v => v.trim()));
+      _batchCsvData = { header, rows };
+      nameEl.textContent = '已选: ' + file.name + ' (' + rows.length + ' 条)';
+    } catch(err) { alert('CSV 解析失败: ' + err.message); }
+  };
+  reader.onerror = function() { alert('文件读取失败'); };
+  reader.readAsText(file);
+}
+
+async function runBatchPrediction() {
+  if (!_batchCsvData || _batchCsvData.rows.length === 0) {
+    alert('请先选择一个有效的 CSV 文件');
+    return;
+  }
+
+  // 确保模型已加载
+  if (!_standaloneMode && !_modelData) {
+    alert('模型尚未加载，请先完成训练');
+    return;
+  }
+
+  const { header, rows } = _batchCsvData;
+  const total = rows.length;
+
+  document.getElementById('batchProgressArea').style.display = 'block';
+  document.getElementById('batchResultsArea').style.display = 'none';
+  document.getElementById('batchPredictBtn').disabled = true;
+
+  const results = [];
+  let completed = 0;
+
+  for (let i = 0; i < total; i++) {
+    const row = rows[i];
+    // 建立 header → value 映射
+    const rowObj = {};
+    header.forEach((h, idx) => { rowObj[h] = row[idx] !== undefined ? row[idx] : ''; });
+
+    // 构造特征数组（按 featureNames 顺序）
+    const catEnc = (_modelData && _modelData.feature_cat_encoding) || {};
+    const features = _featureNames.map(fn => {
+      if (fn === '零件质量要求') return NaN;
+      if (fn.startsWith('质量_')) {
+        // 从 CSV 的"零件质量要求"列解析对应的质量项
+        const item = fn.replace('质量_', '');
+        const qtext = rowObj['零件质量要求'] || '';
+        const { qualityFlags } = parseQualityText(qtext);
+        return qualityFlags[fn] !== undefined ? qualityFlags[fn] : 0;
+      }
+      const colInfo = _featureColMap[fn];
+      const isCategorical = (colInfo && !colInfo.isNumeric) ||
+                            (!colInfo && catEnc.hasOwnProperty(fn));
+      const v = rowObj[fn];
+      if (v === undefined || v === '' || v === null) return NaN;
+      if (isCategorical) {
+        const encoding = catEnc[fn] || {};
+        return encoding.hasOwnProperty(v) ? encoding[v] : NaN;
+      }
+      const n = parseFloat(v);
+      return isNaN(n) ? NaN : n;
+    });
+
+    try {
+      let predResult;
+      if (_standaloneMode && _modelData) {
+        const r = LGBPredictor.predict(_modelData, features);
+        const predIdx = r.predictedClassIdx;
+        predResult = {
+          predicted_class: _classNames[predIdx] || String(predIdx),
+          confidence: Math.round(r.probs[predIdx] * 10000) / 100,
+          probability: r.probs[predIdx],
+        };
+      } else {
+        // 服务端预测
+        const featuresForServer = features.map(v => (isNaN(v) ? null : v));
+        const resp = await fetch('/api/predict', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ features: featuresForServer }),
+        });
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.error);
+        predResult = data.data;
+      }
+      results.push({ rowIndex: i + 1, ...predResult, rawFeatures: rowObj });
+    } catch(err) {
+      results.push({ rowIndex: i + 1, predicted_class: '错误', confidence: 0, error: err.message, rawFeatures: rowObj });
+    }
+
+    completed++;
+    const pct = Math.round(completed / total * 100);
+    document.getElementById('batchProgressBar').style.width = pct + '%';
+    document.getElementById('batchProgressText').textContent = `已预测 ${completed} / ${total} 条（${pct}%）`;
+
+    // 每 50 条 Yield 一下，避免 UI 卡死
+    if (completed % 50 === 0) await new Promise(r => setTimeout(r, 0));
+  }
+
+  _batchResults = results;
+  document.getElementById('batchProgressBar').style.width = '100%';
+  document.getElementById('batchProgressText').textContent = '预测完成！';
+
+  renderBatchResultsTable(results, header);
+  document.getElementById('batchResultsArea').style.display = 'block';
+  document.getElementById('batchPredictBtn').disabled = false;
+  document.getElementById('batchExportBtn').disabled = false;
+}
+
+function renderBatchResultsTable(results, csvHeader) {
+  // 表头：序号 + 原始特征列 + 预测类别 + 置信度
+  const thead = document.getElementById('batchResultsHead');
+  const tbody = document.getElementById('batchResultsBody');
+
+  const ths = ['序号', ...csvHeader, '预测类别', '置信度(%)'];
+  thead.innerHTML = '<tr>' + ths.map(h => '<th style="padding:8px 12px;border-bottom:1px solid var(--gray-4);white-space:nowrap;">' + h + '</th>').join('') + '</tr>';
+
+  tbody.innerHTML = results.map(r => {
+    const cells = [
+      r.rowIndex,
+      ..._featureNames.map(fn => {
+        const v = r.rawFeatures[fn];
+        return v !== undefined ? v : '';
+      }),
+      r.predicted_class,
+      r.error ? r.error : r.confidence,
+    ];
+    const cls = r.error ? 'style="color:var(--danger);"' : '';
+    return '<tr>' + cells.map((v, i) => {
+      const isLast = i === cells.length - 1;
+      const isSecondLast = i === cells.length - 2;
+      let style = 'padding:6px 12px;border-bottom:1px solid var(--gray-5);';
+      if (isSecondLast && !r.error) style += 'font-weight:600;color:var(--primary);';
+      return `<td style="${style}" ${cls || ''}>${v}</td>`;
+    }).join('') + '</tr>';
+  }).join('');
+
+  document.getElementById('batchResultCount').textContent = results.length;
+}
+
+function exportBatchResults() {
+  if (!_batchResults || !_batchCsvData) return;
+  const { header } = _batchCsvData;
+  const lines = [['序号', ...header, '预测类别', '置信度(%)']];
+  _batchResults.forEach(r => {
+    const featVals = _featureNames.map(fn => (r.rawFeatures[fn] !== undefined ? r.rawFeatures[fn] : ''));
+    lines.push([r.rowIndex, ...featVals, r.predicted_class, r.error ? r.error : r.confidence]);
+  });
+  const csv = lines.map(row => row.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
+  const BOM = '\uFEFF';
+  const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'batch_predictions.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function clearBatchResults() {
+  _batchCsvData = null;
+  _batchResults = null;
+  document.getElementById('batchResultsArea').style.display = 'none';
+  document.getElementById('batchProgressArea').style.display = 'none';
+  document.getElementById('batchFileName').textContent = '';
+  document.getElementById('batchCsvInput').value = '';
+  document.getElementById('batchPredictBtn').disabled = true;
+  document.getElementById('batchExportBtn').disabled = true;
+  document.getElementById('batchProgressBar').style.width = '0%';
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// Tab 切换
+// ══════════════════════════════════════════════════════════════════════
+function switchTab(tab) {
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab' + (tab === 'train' ? 'Train' : 'Predict')).classList.add('active');
+  document.getElementById('trainPanel').style.display = tab === 'train' ? 'block' : 'none';
+  document.getElementById('predictPanel').style.display = tab === 'predict' ? 'block' : 'none';
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// 下载预测工具
+// ══════════════════════════════════════════════════════════════════════
+async function downloadStandalone() {
+  const btn = document.getElementById('downloadStandaloneBtn');
+  if (!_modelData) {
+    alert('模型数据尚未加载，请先完成训练');
+    return;
+  }
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> 生成中...';
+  try {
+    // 使用纯预测版（不含训练 UI）
+    const resp = await fetch('/api/standalone-predict-only');
+    if (!resp.ok) throw new Error('生成失败');
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'LightGBM_predict.html';
+    a.click();
+    URL.revokeObjectURL(url);
+    log('✅ 独立预测版已下载，可完全离线运行', 'success');
+  } catch (e) {
+    log('❌ 下载失败: ' + e.message, 'error');
+    alert('下载失败: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '💾 下载预测工具';
+  }
+}
+
+function toggleRawData() {
+  const body = document.getElementById('rawDataBody');
+  if (body) body.style.display = body.style.display === 'none' ? 'block' : 'none';
+}
+
+function copyPredictUrl() {
+  const urlEl = document.getElementById('predictUrlText');
+  if (!urlEl) return;
+  const url = urlEl.textContent;
+  navigator.clipboard.writeText(url).then(() => alert('预测地址已复制到剪贴板')).catch(() => alert('复制失败，请手动复制'));
+}
+
+function resetAll() {
+  document.getElementById('resultArea').style.display = 'none';
+  document.getElementById('errorCard').style.display = 'none';
+  document.getElementById('progressArea').style.display = 'none';
+  resetPrediction();
+  setStatus(_standaloneMode ? '模型已加载（离线）' : '等待训练', _standaloneMode ? 'done' : '');
+  document.getElementById('trainBtn').disabled = _standaloneMode || !_trainCsvFile;
+  document.getElementById('resetBtn').disabled = true;
+  document.getElementById('downloadStandaloneBtn').disabled = true;
+  document.getElementById('tabPredict').disabled = true;
+  _modelData = null;
+  _featureNames = _standaloneMode ? (typeof LGBMODEL !== 'undefined' ? LGBMODEL.feature_names : []) : [];
+  _classNames = _standaloneMode ? (typeof LGBMODEL !== 'undefined' ? LGBMODEL.class_names : []) : [];
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// 初始化
+// ══════════════════════════════════════════════════════════════════════
+if (_standaloneMode) {
+  setStatus('模型已加载（离线）', 'done');
+  buildFeatureInputs();
+  updateModeTag();
+  switchTab('predict');
+  document.getElementById('resultArea').style.display = 'block';
+  document.getElementById('trainBtn').disabled = true;
+  document.getElementById('tabPredict').disabled = false;
+  document.getElementById('navTabs').style.cssText = 'display:flex;';
+  document.getElementById('trainBtnHint').textContent = '独立版：模型已内嵌，可直接进行预测';
+  log('✅ 离线模式：模型已加载，共 ' + _featureNames.length + ' 个特征', 'success');
+} else {
+  setStatus('就绪', 'ready');
+  document.getElementById('trainBtn').disabled = true;
+}
+document.getElementById('resetBtn').disabled = true;
+</script>
+
+</body>
+</html>
