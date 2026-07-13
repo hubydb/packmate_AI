@@ -50,7 +50,7 @@ def _clean_nan(obj):
         except (TypeError, ValueError):
             pass
     return obj
-DATA_FILE = 'test_input_total.csv'  # 默认训练文件
+DATA_FILE = 'data/test_input_total.csv'  # 默认训练文件
 
 # ── 全局模型训练结果 ──
 train_result = None
@@ -481,7 +481,7 @@ _STANDALONE_PREDICT_TEMPLATE = '''<!DOCTYPE html>
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>LightGBM 预测工具（包装类型）</title>
+<title>预测工具（包装类型）</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#1c2435;background:#f3f5f7;line-height:1.6;min-height:100vh}
@@ -497,6 +497,8 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:
 .btn:hover{border-color:#8a94a6}
 .btn-primary{background:#0052d9;color:#fff;border-color:#0052d9}
 .btn-primary:hover{background:#0041b3}
+.btn-success{background:#2ba471;color:#fff;border-color:#2ba471}
+.btn-success:hover{background:#1f8b5e}
 .btn-lg{height:42px;padding:0 28px;font-size:15px}
 .btn:disabled{opacity:0.5;cursor:not-allowed}
 .spinner{display:inline-block;width:14px;height:14px;border:2px solid #c0c6d1;border-top-color:#0052d9;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle}
@@ -512,7 +514,7 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:
 .pred-result .pred-label{font-size:13px;color:#0052d9;margin-bottom:6px;font-weight:500}
 .pred-result .pred-class{font-size:44px;font-weight:800;color:#0052d9;line-height:1.2}
 .pred-result .pred-conf{font-size:15px;color:#4f5d73;margin-top:6px}
-.proba-bars{display:grid;grid-template-columns:repeat(auto-fill,minmax:180px,1fr);gap:10px;margin-top:12px}
+.proba-bars{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-top:12px}
 .proba-item{display:flex;flex-direction:column;gap:3px}
 .proba-item .proba-label{font-size:12px;color:#4f5d73;display:flex;justify-content:space-between}
 .proba-item .proba-track{height:7px;background:#e8ecf0;border-radius:4px;overflow:hidden}
@@ -532,16 +534,19 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:
 .batch-table tr:hover td{background:#f8f9fb}
 .batch-table .pred-col{font-weight:700;color:#0052d9}
 .batch-table .conf-col{color:#4f5d73;font-size:12px}
+.progress-bar-wrap{height:6px;background:#e8ecf0;border-radius:3px;overflow:hidden;margin:6px 0}
+.progress-bar-fill{height:100%;background:#0052d9;width:0%;transition:width .3s}
 </style>
 </head>
 <body>
 <header class="header">
-  <h1>LightGBM 预测工具（包装类型）</h1>
+  <h1>预测工具（包装类型）</h1>
   <span class="subtitle">离线版 · 无需网络</span>
   <span class="model-info" id="modelInfo"></span>
   <span id="initStatus" style="margin-left:8px;font-size:11px;color:#d54941"></span>
 </header>
 <div class="main">
+  <!-- 单条预测 -->
   <div class="card">
     <div class="card-title">特征输入</div>
     <div class="alert">零件质量要求请从下拉框选择，其他特征可留空。点击"随机填充"生成符合模型特征的随机示例值。</div>
@@ -570,61 +575,121 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:
     <div class="alert-error" id="errorMsg"></div>
   </div>
 
+  <!-- 批量预测卡片 -->
+  <div class="card" id="batchCard">
+    <div class="card-title">📦 批量预测</div>
+    <div class="alert">
+      选择包含特征数据的 CSV 文件（表头需与特征名一致），将对每一行进行预测并输出结果。
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+      <button class="btn btn-primary" id="batchSelectBtn" onclick="document.getElementById('batchCsvInput').click()">
+        📂 选择 CSV 文件
+      </button>
+      <span id="batchFileName" style="font-size:13px;color:#8a94a6;"></span>
+      <input type="file" id="batchCsvInput" accept=".csv" style="display:none" onchange="handleBatchCsv(this.files[0])" />
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:12px;">
+      <button class="btn btn-success btn-lg" id="batchPredictBtn" onclick="runBatchPrediction()" disabled>
+        🚀 开始批量预测
+      </button>
+      <button class="btn btn-lg" id="batchExportBtn" onclick="exportBatchResults()" disabled>
+        💾 导出 CSV
+      </button>
+      <button class="btn btn-lg" onclick="clearBatchResults()">
+        🗑 清空
+      </button>
+    </div>
+    <div id="batchProgressArea" style="display:none;margin-bottom:12px;">
+      <div class="progress-bar-wrap"><div class="progress-bar-fill" id="batchProgressBar"></div></div>
+      <div style="font-size:13px;color:#4f5d73;margin-top:4px;" id="batchProgressText"></div>
+    </div>
+    <div id="batchResultsArea" style="display:none;">
+      <div style="margin-bottom:8px;font-size:13px;color:#4f5d73;">
+        共 <strong id="batchResultCount">0</strong> 条预测结果
+      </div>
+      <div style="overflow-x:auto;max-height:400px;overflow-y:auto;border:1px solid #e8ecf0;border-radius:4px;">
+        <table class="batch-table" id="batchResultsTable">
+          <thead id="batchResultsHead" style="position:sticky;top:0;background:#f3f5f7;z-index:1;"></thead>
+          <tbody id="batchResultsBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <div class="card">
     <div class="card-title">模型信息</div>
     <div class="model-stats" id="modelStats"></div>
     $CHIPS
   </div>
 </div>
+
 <script>
 var _modelErr = [];
 try{ var MODEL_RAW = $MODEL; window.MODEL = MODEL_RAW; }
 catch(e){ _modelErr.push('MODEL parse: ' + e.message); window.MODEL = null; }
 
-(function(){
-  try{
-    if (!window.MODEL) { alert('模型数据加载失败：' + _modelErr.join(', ')); return; }
-    var names = window.MODEL.feature_names;
-    var classes = window.MODEL.class_names;
-    if (!names || !names.length) { alert('特征名不存在'); return; }
-    if (!classes || !classes.length) { alert('类别名不存在'); return; }
-    document.getElementById('modelInfo').textContent = classes.length + ' 个类别 · ' + names.length + ' 个特征';
-    document.getElementById('modelStats').innerHTML =
-      '<div class="model-stat">测试准确率 <strong>' + (window.MODEL.accuracy_pct||'—') + '</strong></div>' +
-      '<div class="model-stat">树数量 <strong>' + (window.MODEL.num_trees||'—') + '</strong></div>' +
-      '<div class="model-stat">特征数 <strong>' + names.length + '</strong></div>' +
-      '<div class="model-stat">类别数 <strong>' + classes.length + '</strong></div>';
-    window._names = names;
-    window._classes = classes;
-    document.getElementById('initStatus').textContent = '✓ 模型已加载';
-    document.getElementById('initStatus').style.color = '#2ba471';
-
-    // 零件质量要求下拉框联动勾选框
-    var selectEl = document.getElementById('qualitySelect');
-    var checkboxesEl = document.getElementById('qualityCheckboxes');
-    if (selectEl && checkboxesEl) {
-      selectEl.addEventListener('change', function() {
-        var text = this.value;
-        var flags = {};
-        QUALITY_ITEMS.forEach(function(item){ flags['质量_' + item] = 0; });
-        if (text) {
-          var m = text.match(/核心防护：([^；]+)/);
-          if (m) m[1].split('、').forEach(function(item){
-            if (flags.hasOwnProperty('质量_' + item)) flags['质量_' + item] = 1;
-          });
-        }
-        QUALITY_ITEMS.forEach(function(item){
-          var cb = document.getElementById('qc_' + item);
-          if (cb) cb.checked = flags['质量_' + item] === 1;
-        });
-      });
-    }
-  } catch(e) {
-    document.getElementById('initStatus').textContent = '✗ ' + e.message;
-    alert('初始化错误: ' + e.message);
+// 通用预测函数 (与单条共用)
+function predictLGB(model, features) {
+  var numClasses = model.num_classes || 2;
+  var trees = (model.trees && model.trees.tree_info) ? model.trees.tree_info : [];
+  var isMulti = numClasses > 2;
+  var contribs = [];
+  for (var ci = 0; ci < numClasses; ci++) contribs[ci] = 0.0;
+  for (var ti = 0; ti < trees.length; ti++) {
+    var treeEntry = trees[ti];
+    var treeIdx = treeEntry.tree_index;
+    var targetClass = isMulti ? (treeIdx % numClasses) : 0;
+    if (targetClass < 0 || targetClass >= numClasses) continue;
+    if (!treeEntry.tree_structure) continue;
+    contribs[targetClass] += getLeafValue(treeEntry.tree_structure, features);
   }
-})();
+  var probs;
+  if (isMulti) {
+    var maxC = Math.max.apply(null, contribs);
+    var exps = contribs.map(function(c){return Math.exp(c - maxC);});
+    var sumExp = exps.reduce(function(a, b){return a + b;}, 0);
+    probs = exps.map(function(e){return e / sumExp;});
+  } else {
+    var sig = 1.0 / (1.0 + Math.exp(-contribs[0]));
+    probs = [1.0 - sig, sig];
+  }
+  var predIdx = probs.indexOf(Math.max.apply(null, probs));
+  var className = window._classes[predIdx] !== undefined ? window._classes[predIdx] : String(predIdx);
+  return {
+    predicted_class: className,
+    confidence: Math.round(probs[predIdx] * 100, 2),
+    all_probabilities: window._classes.map(function(c, i){
+      return {class: c, probability: probs[i]};
+    })
+  };
+}
 
+function getLeafValue(node, features) {
+  if (!node) return 0.0;
+  if (node.leaf_value !== undefined) return node.leaf_value;
+  var featIdx = node.split_feature;
+  var v = (featIdx !== undefined && featIdx !== null) ? features[featIdx] : undefined;
+  var isMissing = (v === undefined || isNaN(v));
+  if (isMissing) return getLeafValue(node.default_left ? node.left_child : node.right_child, features);
+  var goLeft = (node.decision_type === '<=') ? (v <= node.threshold) : (v <= node.threshold);
+  return getLeafValue(goLeft ? node.left_child : node.right_child, features);
+}
+
+// 解析零件质量要求，返回质量标志对象
+function parseQualityText(text) {
+  var flags = {};
+  QUALITY_ITEMS.forEach(function(item){ flags['质量_' + item] = 0; });
+  if (!text) return flags;
+  var m = text.match(/核心防护：([^；]+)/);
+  if (m) {
+    m[1].split('、').forEach(function(item){
+      if (flags.hasOwnProperty('质量_' + item)) flags['质量_' + item] = 1;
+    });
+  }
+  return flags;
+}
+
+// 获取特征数组（用于单条预测）
 function getFeatures() {
   if (!window._names) throw new Error('模型未就绪');
   var catEnc = window.MODEL && window.MODEL.feature_cat_encoding;
@@ -638,17 +703,16 @@ function getFeatures() {
     var el = document.getElementById('feat_' + name);
     var v = el ? el.value.trim() : '';
     if (v === '') return NaN;
-    // 判断是否为分类特征，若是则查编码表转整数
     if (catEnc && catEnc.hasOwnProperty(name)) {
       var mapping = catEnc[name];
       return mapping.hasOwnProperty(v) ? mapping[v] : NaN;
     }
-    // 数值特征
     var f = parseFloat(v);
     return isNaN(f) ? NaN : f;
   });
 }
 
+// 单条预测入口
 function doPredict() {
   try {
     var features = getFeatures();
@@ -673,54 +737,225 @@ function renderResult(r) {
   document.getElementById('errorCard').style.display='none';
 }
 
-function predictLGB(model, features) {
-  var numClasses = model.num_classes || 2;
-  var trees = (model.trees && model.trees.tree_info) ? model.trees.tree_info : [];
-  var isMulti = numClasses > 2;
-  var contribs = [];
-  for (var ci = 0; ci < numClasses; ci++) contribs[ci] = 0.0;
+// ---- 批量预测相关 ----
+var _batchCsvData = null;      // { header: [...], rows: [[...], ...] }
+var _batchResults = null;
 
-  for (var ti = 0; ti < trees.length; ti++) {
-    var treeEntry = trees[ti];
-    var treeIdx = treeEntry.tree_index;
-    var targetClass = isMulti ? (treeIdx % numClasses) : 0;
-    if (targetClass < 0 || targetClass >= numClasses) continue;
-    if (!treeEntry.tree_structure) continue;
-    contribs[targetClass] += getLeafValue(treeEntry.tree_structure, features);
-  }
-
-  var probs;
-  if (isMulti) {
-    var maxC = Math.max.apply(null, contribs);
-    var exps = contribs.map(function(c){return Math.exp(c - maxC);});
-    var sumExp = exps.reduce(function(a, b){return a + b;}, 0);
-    probs = exps.map(function(e){return e / sumExp;});
+function handleBatchCsv(file) {
+  if (!file) return;
+  var nameEl = document.getElementById('batchFileName');
+  var btn = document.getElementById('batchPredictBtn');
+  if (file) {
+    nameEl.textContent = '已选: ' + file.name;
+    btn.disabled = false;
   } else {
-    var sig = 1.0 / (1.0 + Math.exp(-contribs[0]));
-    probs = [1.0 - sig, sig];
+    nameEl.textContent = '';
+    btn.disabled = true;
+  }
+  _batchCsvData = null;
+  _batchResults = null;
+  document.getElementById('batchResultsArea').style.display = 'none';
+  document.getElementById('batchExportBtn').disabled = true;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var text = e.target.result;
+      var lines = text.trim().split('\\n');
+      if (lines.length < 2) { alert('CSV 文件内容不足'); return; }
+      var header = lines[0].split(',').map(function(h){ return h.trim(); });
+      var rows = lines.slice(1).map(function(line){ return line.split(',').map(function(v){ return v.trim(); }); });
+      _batchCsvData = { header: header, rows: rows };
+      nameEl.textContent = '已选: ' + file.name + ' (' + rows.length + ' 条)';
+    } catch(err) { alert('CSV 解析失败: ' + err.message); }
+  };
+  reader.onerror = function() { alert('文件读取失败'); };
+  reader.readAsText(file);
+}
+
+function runBatchPrediction() {
+  if (!_batchCsvData || _batchCsvData.rows.length === 0) {
+    alert('请先选择一个有效的 CSV 文件');
+    return;
+  }
+  if (!window.MODEL) { alert('模型未加载'); return; }
+  var header = _batchCsvData.header;
+  var rows = _batchCsvData.rows;
+  var total = rows.length;
+  document.getElementById('batchProgressArea').style.display = 'block';
+  document.getElementById('batchResultsArea').style.display = 'none';
+  document.getElementById('batchPredictBtn').disabled = true;
+  var results = [];
+  var catEnc = window.MODEL.feature_cat_encoding || {};
+  var names = window._names;
+  var classes = window._classes;
+
+  for (var i = 0; i < total; i++) {
+    var row = rows[i];
+    var rowObj = {};
+    header.forEach(function(h, idx){ rowObj[h] = (row[idx] !== undefined ? row[idx] : ''); });
+
+    // 构建特征数组（与 getFeatures 逻辑一致，但基于 CSV 行）
+    var features = names.map(function(name){
+      if (name === '零件质量要求') return NaN;
+      if (name.startsWith('质量_')) {
+        var qtext = rowObj['零件质量要求'] || '';
+        var flags = parseQualityText(qtext);
+        return flags[name] !== undefined ? flags[name] : 0;
+      }
+      var v = rowObj[name];
+      if (v === undefined || v === '' || v === null) return NaN;
+      if (catEnc && catEnc.hasOwnProperty(name)) {
+        var mapping = catEnc[name];
+        return mapping.hasOwnProperty(v) ? mapping[v] : NaN;
+      }
+      var n = parseFloat(v);
+      return isNaN(n) ? NaN : n;
+    });
+
+    try {
+      var predResult = predictLGB(window.MODEL, features);
+      var predClass = predResult.predicted_class;
+      var confidence = predResult.confidence;
+      results.push({
+        rowIndex: i + 1,
+        actual_class: rowObj['CKD包装类型'] || '',
+        predicted_class: predClass,
+        confidence: confidence,
+        probability: predResult.all_probabilities[classes.indexOf(predClass)] ? predResult.all_probabilities[classes.indexOf(predClass)].probability : 0,
+        rawFeatures: rowObj,
+        error: null
+      });
+    } catch (err) {
+      results.push({
+        rowIndex: i + 1,
+        actual_class: rowObj['CKD包装类型'] || '',
+        predicted_class: '错误',
+        confidence: 0,
+        probability: 0,
+        rawFeatures: rowObj,
+        error: err.message
+      });
+    }
+
+    var pct = Math.round((i + 1) / total * 100);
+    document.getElementById('batchProgressBar').style.width = pct + '%';
+    document.getElementById('batchProgressText').textContent = '已预测 ' + (i + 1) + ' / ' + total + ' 条（' + pct + '%）';
+    if ((i + 1) % 50 === 0) {
+      // 让 UI 更新
+      setTimeout(function(){}, 0);
+    }
   }
 
-  var predIdx = probs.indexOf(Math.max.apply(null, probs));
-  var className = window._classes[predIdx] !== undefined ? window._classes[predIdx] : String(predIdx);
-  return {
-    predicted_class: className,
-    confidence: Math.round(probs[predIdx] * 100, 2),
-    all_probabilities: window._classes.map(function(c, i){
-      return {class: c, probability: probs[i]};
-    })
-  };
+  _batchResults = results;
+  document.getElementById('batchProgressBar').style.width = '100%';
+  document.getElementById('batchProgressText').textContent = '预测完成！';
+  renderBatchTable(results, header);
+  document.getElementById('batchResultsArea').style.display = 'block';
+  document.getElementById('batchPredictBtn').disabled = false;
+  document.getElementById('batchExportBtn').disabled = false;
 }
 
-function getLeafValue(node, features) {
-  if (!node) return 0.0;
-  if (node.leaf_value !== undefined) return node.leaf_value;
-  var featIdx = node.split_feature;
-  var v = (featIdx !== undefined && featIdx !== null) ? features[featIdx] : undefined;
-  var isMissing = (v === undefined || isNaN(v));
-  if (isMissing) return getLeafValue(node.default_left ? node.left_child : node.right_child, features);
-  var goLeft = (node.decision_type === '<=') ? (v <= node.threshold) : (v <= node.threshold);
-  return getLeafValue(goLeft ? node.left_child : node.right_child, features);
+function renderBatchTable(results, csvHeader) {
+  var thead = document.getElementById('batchResultsHead');
+  var tbody = document.getElementById('batchResultsBody');
+  var ths = ['序号'].concat(csvHeader, ['真实包装类型', '预测包装类型', '是否正确', '置信度(%)']);
+  thead.innerHTML = '<tr>' + ths.map(function(h){ return '<th style="padding:8px 12px;border-bottom:1px solid #e8ecf0;white-space:nowrap;">' + h + '</th>'; }).join('') + '</tr>';
+  tbody.innerHTML = results.map(function(r){
+    var isCorrect = r.actual_class && String(r.actual_class) === String(r.predicted_class);
+    var cells = [
+      r.rowIndex,
+      ...csvHeader.map(function(col){ return r.rawFeatures[col] !== undefined ? r.rawFeatures[col] : ''; }),
+      r.actual_class,
+      r.predicted_class,
+      r.error ? '错误' : (isCorrect ? '✓' : '✗'),
+      r.error ? r.error : r.confidence
+    ];
+    return '<tr>' + cells.map(function(v, idx){
+      var style = 'padding:6px 12px;border-bottom:1px solid #e8ecf0;';
+      if (idx === cells.length - 3) style += 'font-weight:600;color:#2ba471;';
+      if (idx === cells.length - 2) style += 'font-weight:600;color:#0052d9;';
+      return '<td style="' + style + '">' + v + '</td>';
+    }).join('') + '</tr>';
+  }).join('');
+  document.getElementById('batchResultCount').textContent = results.length;
 }
+
+function exportBatchResults() {
+  if (!_batchResults || !_batchCsvData) return;
+  var header = _batchCsvData.header;
+  var lines = [['序号', ...header, '真实包装类型', '预测包装类型', '是否正确', '置信度(%)']];
+  _batchResults.forEach(function(r){
+    var rawVals = header.map(function(col){ return r.rawFeatures[col] !== undefined ? r.rawFeatures[col] : ''; });
+    var isCorrect = r.actual_class && String(r.actual_class) === String(r.predicted_class);
+    lines.push([
+      r.rowIndex,
+      ...rawVals,
+      r.actual_class,
+      r.predicted_class,
+      r.error ? '错误' : (isCorrect ? '✓' : '✗'),
+      r.error ? r.error : r.confidence
+    ]);
+  });
+  var csv = lines.map(function(row){ return row.map(function(v){ return '"' + String(v).replace(/"/g,'""') + '"'; }).join(','); }).join('\\n');
+  var BOM = '\\uFEFF';
+  var blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'batch_predictions.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function clearBatchResults() {
+  _batchCsvData = null;
+  _batchResults = null;
+  document.getElementById('batchResultsArea').style.display = 'none';
+  document.getElementById('batchProgressArea').style.display = 'none';
+  document.getElementById('batchFileName').textContent = '';
+  document.getElementById('batchCsvInput').value = '';
+  document.getElementById('batchPredictBtn').disabled = true;
+  document.getElementById('batchExportBtn').disabled = true;
+  document.getElementById('batchProgressBar').style.width = '0%';
+}
+
+// ---- 初始化及辅助 ----
+(function(){
+  try{
+    if (!window.MODEL) { alert('模型数据加载失败：' + _modelErr.join(', ')); return; }
+    var names = window.MODEL.feature_names;
+    var classes = window.MODEL.class_names;
+    if (!names || !names.length) { alert('特征名不存在'); return; }
+    if (!classes || !classes.length) { alert('类别名不存在'); return; }
+    document.getElementById('modelInfo').textContent = classes.length + ' 个类别 · ' + names.length + ' 个特征';
+    document.getElementById('modelStats').innerHTML =
+      '<div class="model-stat">测试准确率 <strong>' + (window.MODEL.accuracy_pct||'—') + '</strong></div>' +
+      '<div class="model-stat">树数量 <strong>' + (window.MODEL.num_trees||'—') + '</strong></div>' +
+      '<div class="model-stat">特征数 <strong>' + names.length + '</strong></div>' +
+      '<div class="model-stat">类别数 <strong>' + classes.length + '</strong></div>';
+    window._names = names;
+    window._classes = classes;
+    document.getElementById('initStatus').textContent = '✓ 模型已加载';
+    document.getElementById('initStatus').style.color = '#2ba471';
+
+    // 零件质量要求下拉框联动勾选框
+    var selectEl = document.getElementById('qualitySelect');
+    var checkboxesEl = document.getElementById('qualityCheckboxes');
+    if (selectEl && checkboxesEl) {
+      selectEl.addEventListener('change', function() {
+        var text = this.value;
+        var flags = parseQualityText(text);
+        QUALITY_ITEMS.forEach(function(item){
+          var cb = document.getElementById('qc_' + item);
+          if (cb) cb.checked = flags['质量_' + item] === 1;
+        });
+      });
+    }
+  } catch(e) {
+    document.getElementById('initStatus').textContent = '✗ ' + e.message;
+    alert('初始化错误: ' + e.message);
+  }
+})();
 
 function autoFillRandom() {
   try {

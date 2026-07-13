@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>LightGBM 训练测试平台-v2.0</title>
+<title>训练测试平台-v2.0</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
@@ -217,7 +217,7 @@ pre { background: var(--gray-6); padding: 16px; border-radius: 4px; font-size: 1
 <body>
 
 <header class="header">
-  <h1>LightGBM 训练测试平台</h1>
+  <h1>训练测试平台</h1>
   <span class="subtitle">选择 CSV 文件进行训练</span>
   <span class="badge" id="statusBadge">等待训练</span>
   <span class="mode-tag online" id="modeTag">模型训练模式</span>
@@ -1265,7 +1265,6 @@ async function runBatchPrediction() {
     return;
   }
 
-  // 确保模型已加载
   if (!_standaloneMode && !_modelData) {
     alert('模型尚未加载，请先完成训练');
     return;
@@ -1282,128 +1281,405 @@ async function runBatchPrediction() {
   let completed = 0;
 
   for (let i = 0; i < total; i++) {
-    const row = rows[i];
-    // 建立 header → value 映射
-    const rowObj = {};
-    header.forEach((h, idx) => { rowObj[h] = row[idx] !== undefined ? row[idx] : ''; });
 
-    // 构造特征数组（按 featureNames 顺序）
+    const row = rows[i];
+
+    const rowObj = {};
+    header.forEach((h, idx) => {
+      rowObj[h] = row[idx] !== undefined ? row[idx] : '';
+    });
+
     const catEnc = (_modelData && _modelData.feature_cat_encoding) || {};
+
     const features = _featureNames.map(fn => {
+
       if (fn === '零件质量要求') return NaN;
+
       if (fn.startsWith('质量_')) {
-        // 从 CSV 的"零件质量要求"列解析对应的质量项
-        const item = fn.replace('质量_', '');
+
         const qtext = rowObj['零件质量要求'] || '';
+
         const { qualityFlags } = parseQualityText(qtext);
-        return qualityFlags[fn] !== undefined ? qualityFlags[fn] : 0;
+
+        return qualityFlags[fn] !== undefined
+          ? qualityFlags[fn]
+          : 0;
       }
+
       const colInfo = _featureColMap[fn];
-      const isCategorical = (colInfo && !colInfo.isNumeric) ||
-                            (!colInfo && catEnc.hasOwnProperty(fn));
+
+      const isCategorical =
+        (colInfo && !colInfo.isNumeric) ||
+        (!colInfo && catEnc.hasOwnProperty(fn));
+
       const v = rowObj[fn];
-      if (v === undefined || v === '' || v === null) return NaN;
-      if (isCategorical) {
-        const encoding = catEnc[fn] || {};
-        return encoding.hasOwnProperty(v) ? encoding[v] : NaN;
+
+      if (v === undefined || v === '' || v === null) {
+        return NaN;
       }
+
+      if (isCategorical) {
+
+        const encoding = catEnc[fn] || {};
+
+        return encoding.hasOwnProperty(v)
+          ? encoding[v]
+          : NaN;
+      }
+
       const n = parseFloat(v);
-      return isNaN(n) ? NaN : n;
+
+      return isNaN(n)
+        ? NaN
+        : n;
     });
 
     try {
+
       let predResult;
+
       if (_standaloneMode && _modelData) {
-        const r = LGBPredictor.predict(_modelData, features);
+
+        const r = LGBPredictor.predict(
+          _modelData,
+          features
+        );
+
         const predIdx = r.predictedClassIdx;
+
         predResult = {
-          predicted_class: _classNames[predIdx] || String(predIdx),
-          confidence: Math.round(r.probs[predIdx] * 10000) / 100,
-          probability: r.probs[predIdx],
+          predicted_class:
+            _classNames[predIdx] || String(predIdx),
+
+          confidence:
+            Math.round(
+              r.probs[predIdx] * 10000
+            ) / 100,
+
+          probability:
+            r.probs[predIdx]
         };
+
       } else {
-        // 服务端预测
-        const featuresForServer = features.map(v => (isNaN(v) ? null : v));
-        const resp = await fetch('/api/predict', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ features: featuresForServer }),
-        });
-        const data = await resp.json();
-        if (!data.success) throw new Error(data.error);
+
+        const featuresForServer =
+          features.map(v =>
+            isNaN(v)
+              ? null
+              : v
+          );
+
+        const resp = await fetch(
+          '/api/predict',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type':
+                'application/json'
+            },
+            body: JSON.stringify({
+              features:
+                featuresForServer
+            })
+          }
+        );
+
+        const data =
+          await resp.json();
+
+        if (!data.success) {
+          throw new Error(data.error);
+        }
+
         predResult = data.data;
       }
-      results.push({ rowIndex: i + 1, ...predResult, rawFeatures: rowObj });
-    } catch(err) {
-      results.push({ rowIndex: i + 1, predicted_class: '错误', confidence: 0, error: err.message, rawFeatures: rowObj });
+
+      results.push({
+        rowIndex: i + 1,
+
+        actual_class:
+          rowObj['CKD包装类型'] || '',
+
+        ...predResult,
+
+        rawFeatures: rowObj
+      });
+
+    } catch (err) {
+
+      results.push({
+        rowIndex: i + 1,
+
+        actual_class:
+          rowObj['CKD包装类型'] || '',
+
+        predicted_class: '错误',
+
+        confidence: 0,
+
+        error: err.message,
+
+        rawFeatures: rowObj
+      });
     }
 
     completed++;
-    const pct = Math.round(completed / total * 100);
-    document.getElementById('batchProgressBar').style.width = pct + '%';
-    document.getElementById('batchProgressText').textContent = `已预测 ${completed} / ${total} 条（${pct}%）`;
 
-    // 每 50 条 Yield 一下，避免 UI 卡死
-    if (completed % 50 === 0) await new Promise(r => setTimeout(r, 0));
+    const pct =
+      Math.round(
+        completed / total * 100
+      );
+
+    document.getElementById(
+      'batchProgressBar'
+    ).style.width = pct + '%';
+
+    document.getElementById(
+      'batchProgressText'
+    ).textContent =
+      `已预测 ${completed} / ${total} 条（${pct}%）`;
+
+    if (completed % 50 === 0) {
+      await new Promise(r =>
+        setTimeout(r, 0)
+      );
+    }
   }
 
   _batchResults = results;
-  document.getElementById('batchProgressBar').style.width = '100%';
-  document.getElementById('batchProgressText').textContent = '预测完成！';
 
-  renderBatchResultsTable(results, header);
-  document.getElementById('batchResultsArea').style.display = 'block';
-  document.getElementById('batchPredictBtn').disabled = false;
-  document.getElementById('batchExportBtn').disabled = false;
+  document.getElementById(
+    'batchProgressBar'
+  ).style.width = '100%';
+
+  document.getElementById(
+    'batchProgressText'
+  ).textContent = '预测完成！';
+
+  renderBatchResultsTable(
+    results,
+    header
+  );
+
+  document.getElementById(
+    'batchResultsArea'
+  ).style.display = 'block';
+
+  document.getElementById(
+    'batchPredictBtn'
+  ).disabled = false;
+
+  document.getElementById(
+    'batchExportBtn'
+  ).disabled = false;
 }
 
-function renderBatchResultsTable(results, csvHeader) {
-  // 表头：序号 + 原始特征列 + 预测类别 + 置信度
-  const thead = document.getElementById('batchResultsHead');
-  const tbody = document.getElementById('batchResultsBody');
+function renderBatchResultsTable(
+  results,
+  csvHeader
+) {
 
-  const ths = ['序号', ...csvHeader, '预测类别', '置信度(%)'];
-  thead.innerHTML = '<tr>' + ths.map(h => '<th style="padding:8px 12px;border-bottom:1px solid var(--gray-4);white-space:nowrap;">' + h + '</th>').join('') + '</tr>';
+  const thead =
+    document.getElementById(
+      'batchResultsHead'
+    );
 
-  tbody.innerHTML = results.map(r => {
-    const cells = [
-      r.rowIndex,
-      ..._featureNames.map(fn => {
-        const v = r.rawFeatures[fn];
-        return v !== undefined ? v : '';
-      }),
-      r.predicted_class,
-      r.error ? r.error : r.confidence,
-    ];
-    const cls = r.error ? 'style="color:var(--danger);"' : '';
-    return '<tr>' + cells.map((v, i) => {
-      const isLast = i === cells.length - 1;
-      const isSecondLast = i === cells.length - 2;
-      let style = 'padding:6px 12px;border-bottom:1px solid var(--gray-5);';
-      if (isSecondLast && !r.error) style += 'font-weight:600;color:var(--primary);';
-      return `<td style="${style}" ${cls || ''}>${v}</td>`;
-    }).join('') + '</tr>';
-  }).join('');
+  const tbody =
+    document.getElementById(
+      'batchResultsBody'
+    );
 
-  document.getElementById('batchResultCount').textContent = results.length;
+  const ths = [
+    '序号',
+
+    ...csvHeader,
+
+    '真实包装类型',
+
+    '预测包装类型',
+
+    '是否正确',
+
+    '置信度(%)'
+  ];
+
+  thead.innerHTML =
+    '<tr>' +
+    ths.map(h =>
+      '<th style="padding:8px 12px;border-bottom:1px solid var(--gray-4);white-space:nowrap;">'
+      + h +
+      '</th>'
+    ).join('') +
+    '</tr>';
+
+  tbody.innerHTML =
+    results.map(r => {
+
+      const isCorrect =
+        r.actual_class &&
+        String(r.actual_class)
+        === String(r.predicted_class);
+
+      const cells = [
+
+        r.rowIndex,
+
+        ...csvHeader.map(col =>
+          r.rawFeatures[col] !== undefined
+            ? r.rawFeatures[col]
+            : ''
+        ),
+
+        r.actual_class,
+
+        r.predicted_class,
+
+        r.error
+          ? '错误'
+          : (
+              isCorrect
+                ? '✓'
+                : '✗'
+            ),
+
+        r.error
+          ? r.error
+          : r.confidence
+      ];
+
+      return (
+        '<tr>' +
+
+        cells.map((v, i) => {
+
+          let style =
+            'padding:6px 12px;border-bottom:1px solid var(--gray-5);';
+
+          if (
+            i === cells.length - 3
+          ) {
+            style +=
+              'font-weight:600;color:var(--success);';
+          }
+
+          if (
+            i === cells.length - 2
+          ) {
+            style +=
+              'font-weight:600;color:var(--primary);';
+          }
+
+          return `<td style="${style}">${v}</td>`;
+        }).join('')
+
+        + '</tr>'
+      );
+    }).join('');
+
+  document.getElementById(
+    'batchResultCount'
+  ).textContent =
+    results.length;
 }
 
 function exportBatchResults() {
-  if (!_batchResults || !_batchCsvData) return;
-  const { header } = _batchCsvData;
-  const lines = [['序号', ...header, '预测类别', '置信度(%)']];
+
+  if (
+    !_batchResults ||
+    !_batchCsvData
+  ) {
+    return;
+  }
+
+  const { header } =
+    _batchCsvData;
+
+  const lines = [[
+
+    '序号',
+
+    ...header,
+
+    '真实包装类型',
+
+    '预测包装类型',
+
+    '是否正确',
+
+    '置信度(%)'
+  ]];
+
   _batchResults.forEach(r => {
-    const featVals = _featureNames.map(fn => (r.rawFeatures[fn] !== undefined ? r.rawFeatures[fn] : ''));
-    lines.push([r.rowIndex, ...featVals, r.predicted_class, r.error ? r.error : r.confidence]);
+
+    const rawVals =
+      header.map(col =>
+        r.rawFeatures[col] !== undefined
+          ? r.rawFeatures[col]
+          : ''
+      );
+
+    const isCorrect =
+      r.actual_class &&
+      String(r.actual_class)
+      === String(r.predicted_class);
+
+    lines.push([
+
+      r.rowIndex,
+
+      ...rawVals,
+
+      r.actual_class,
+
+      r.predicted_class,
+
+      r.error
+        ? '错误'
+        : (
+            isCorrect
+              ? '✓'
+              : '✗'
+          ),
+
+      r.error
+        ? r.error
+        : r.confidence
+    ]);
   });
-  const csv = lines.map(row => row.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
+
+  const csv =
+    lines.map(row =>
+      row.map(v =>
+        '"' +
+        String(v)
+          .replace(/"/g, '""')
+        + '"'
+      ).join(',')
+    ).join('\n');
+
   const BOM = '\uFEFF';
-  const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+
+  const blob = new Blob(
+    [BOM + csv],
+    {
+      type:
+        'text/csv;charset=utf-8;'
+    }
+  );
+
+  const url =
+    URL.createObjectURL(blob);
+
+  const a =
+    document.createElement('a');
+
   a.href = url;
-  a.download = 'batch_predictions.csv';
+
+  a.download =
+    'batch_predictions.csv';
+
   a.click();
+
   URL.revokeObjectURL(url);
 }
 
