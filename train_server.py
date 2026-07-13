@@ -15,7 +15,7 @@ from sklearn.preprocessing import LabelEncoder
 import lightgbm as lgb
 
 app = Flask(__name__)
-DATA_FILE = 'train_data.csv'
+DATA_FILE = 'data/train_data.csv'
 
 # ── 全局模型训练结果 ──
 train_result = None
@@ -746,11 +746,12 @@ def demo_page():
 
 @app.route('/train_data.csv')
 def serve_csv():
-    return send_from_directory('.', 'train_data.csv')
+    return send_from_directory('.', 'data/train_data.csv')
 
 
 if __name__ == '__main__':
-    print(f'当前目录: {os.getcwd()}')
+    # ── 启动 Flask 服务 ─────────────────────────────────────────────────
+    print(f'\n当前目录: {os.getcwd()}')
     print(f'数据文件: {os.path.exists(DATA_FILE)}')
     print('启动服务: http://127.0.0.1:5000/LightGBM_damo.html')
     app.run(host='0.0.0.0', port=5000, debug=True)
