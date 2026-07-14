@@ -944,6 +944,7 @@ function renderBatchSchemeSummary() {
     if (r.error || !r.pkgMethod) return;
     var pkg = r.pkgMethod;
     totalPartCount += (r.totalParts || 1);
+    var rowCost = computePkgCost(pkg.l, pkg.w, pkg.h, pkg.boxesNeeded, pkg.material);
     var key = pkg.material + '|' + pkg.l + '|' + pkg.w + '|' + pkg.h;
     if (!specs[key]) {
       specs[key] = {
@@ -953,12 +954,14 @@ function renderBatchSchemeSummary() {
         w: pkg.w,
         h: pkg.h,
         count: 0,
+        rowCostSum: 0,
         snp: pkg.snp || 1,
         rows: []
       };
     }
     specs[key].count += (pkg.boxesNeeded || 1);
-    specs[key].rows.push({ seq: idx + 1, partNo: r.rawFeatures['零件号'] || '' });
+    specs[key].rowCostSum += rowCost;
+    specs[key].rows.push({ seq: idx + 1, partNo: r.rawFeatures['零件号'] || '', rowCost: rowCost });
   });
 
   var totalMaterialCost = 0;
@@ -976,8 +979,8 @@ function renderBatchSchemeSummary() {
 
   var rowsHtml = specKeys.map(function(key) {
     var s = specs[key];
-    var matPrice = computePkgCost(s.l, s.w, s.h, 1, s.material);
-    var matTotal = matPrice * s.count;
+    var matTotal = s.rowCostSum;
+    var matPrice = s.count > 0 ? matTotal / s.count : 0;
     totalMaterialCost += matTotal;
     return '<tr>' +
       '<td>' + escapeHtml(s.name) + '</td>' +
