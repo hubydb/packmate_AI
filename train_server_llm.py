@@ -1,7 +1,6 @@
 """
 LightGBM 零件包装方案训练服务（LLM增强版）
 启动方式: python train_server_llm.py
-默认训练文件: data/train_data.csv
 
 功能特性：
 1. 保留 train_server_plus.py 所有功能
@@ -45,7 +44,7 @@ from sklearn.preprocessing import LabelEncoder
 app = Flask(__name__)
 
 # ===== 配置 =====
-DATA_FILE = "data/train_data.csv"
+DATA_FILE = None  # 不再设置默认训练文件，每次训练必须上传
 TEMPLATE_FILE = "LightGBM_damo_plus.html"
 LABEL_COL = "CKD包装类型"
 
@@ -161,6 +160,37 @@ _feature_meta = None
 _col_encoders = None
 _cached_standalone_html = None
 _history_df = None  # 缓存历史训练数据用于软约束查找
+_quality_keywords = []  # 从训练数据中提取的"防XX"关键词列表，排序后固定
+
+
+def _parse_quality_text(text):
+    """从零件质量要求文本中提取所有"防XX"关键词，返回集合"""
+    if not text or not isinstance(text, str):
+        return set()
+    return set(re.findall(r'防[\u4e00-\u9fa5a-zA-Z0-9]+', text))
+
+
+def _extract_quality_keywords(df):
+    """从训练数据中提取所有不重复的"防XX"关键词，排序返回"""
+    col = df["零件质量要求"] if "零件质量要求" in df.columns else pd.Series(dtype=str)
+    all_kw = set()
+    for val in col.dropna():
+        all_kw.update(_parse_quality_text(str(val)))
+    return sorted(all_kw)
+
+
+def _expand_quality_features(df, keywords):
+    """将零件质量要求列展开为多个二元特征列：质量_防XX"""
+    if "零件质量要求" not in df.columns or not keywords:
+        return df
+    result = df.copy()
+    for kw in keywords:
+        col_name = f"质量_{kw}"
+        result[col_name] = result["零件质量要求"].apply(
+            lambda v: 1 if kw in _parse_quality_text(str(v)) else 0
+        )
+    return result
+
 
 
 class NaNSafeJSONProvider(app.json_provider_class):
@@ -188,7 +218,6 @@ def _load_history_df():
         return _history_df
     base_dir = os.path.dirname(os.path.abspath(__file__))
     candidates = [
-        os.path.join(base_dir, DATA_FILE),
         os.path.join(base_dir, "data/train_data_AI.csv"),
         os.path.join(base_dir, "data/train_data.csv"),
     ]
@@ -327,16 +356,48 @@ def _normalize_dataframe(df):
 
 
 def train_model(df):
-    global train_result, _trained_model, _trained_le, _trained_params, _feature_names, _feature_meta, _col_encoders
+    global train_result, _trained_model, _trained_le, _trained_params, _feature_names, _feature_meta, _col_encoders, _quality_keywords
 
-    source_df = _normalize_dataframe(df)
-    df_features = source_df[FEATURE_ORDER].copy()
+    # 1. 提取质量要求关键词，展开为二元特征列
+    df = df.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+    _quality_keywords = _extract_quality_keywords(df)
+    print(f"[训练] 零件质量要求关键词数量: {len(_quality_keywords)}, 关键词: {_quality_keywords}")
+    quality_binary_cols = [f"质量_{kw}" for kw in _quality_keywords]
+    df = _expand_quality_features(df, _quality_keywords)
+
+    # 2. 构建本轮训练使用的特征顺序（不含"零件质量要求"，替换为质量二元列）
+    base_features = [c for c in FEATURE_ORDER if c != "零件质量要求"]
+    run_feature_order = base_features + quality_binary_cols
+    # 验证基础特征列存在
+    missing = [col for col in base_features if col not in df.columns]
+    if missing:
+        raise ValueError(f"CSV 缺少特征列: {missing}")
+
+    # 3. 标签列过滤
+    if LABEL_COL not in df.columns:
+        raise ValueError(f"CSV 必须包含 {LABEL_COL} 列")
+    df = df[df[LABEL_COL].notna()].copy()
+    df[LABEL_COL] = df[LABEL_COL].astype(str).str.strip()
+    df = df[df[LABEL_COL] != ""]
+
+    # 4. 特征标准化（数值→数值，分类→LabelEncoder）
+    df_features = df[run_feature_order].copy()
+    for col in run_feature_order:
+        if _is_numeric_dtype(df_features[col]):
+            df_features[col] = pd.to_numeric(df_features[col], errors="coerce")
+        else:
+            df_features[col] = df_features[col].fillna("__MISSING__").astype(str).str.strip()
+            df_features.loc[df_features[col] == "", col] = "__MISSING__"
+
+    # 5. 保存原始 df（用于后续步骤）
+    source_df = df.copy()
+    source_df[LABEL_COL] = df[LABEL_COL]
 
     _col_encoders = {}
     feature_meta = []
-    for col in FEATURE_ORDER:
+    for col in run_feature_order:
         if _is_numeric_dtype(df_features[col]):
-            df_features[col] = pd.to_numeric(df_features[col], errors="coerce")
             _col_encoders[col] = None
             values = pd.to_numeric(df_features[col], errors="coerce").dropna()
             if values.empty:
@@ -353,7 +414,7 @@ def train_model(df):
             encoded = enc.fit_transform(orig)
             df_features[col] = encoded
             _col_encoders[col] = {"enc": enc, "mapping": dict(zip(enc.classes_, range(len(enc.classes_))))}
-            is_long_text = col in {"零件号", "零件名称", "零件质量要求"}
+            is_long_text = col in {"零件号", "零件名称"}
             feature_meta.append({
                 "name": col,
                 "kind": "categorical",
@@ -400,7 +461,7 @@ def train_model(df):
     _trained_model = model
     _trained_le = le
     _trained_params = params
-    _feature_names = FEATURE_ORDER[:]
+    _feature_names = run_feature_order[:]
     _feature_meta = feature_meta
 
     y_pred_proba = model.predict(X_test)
@@ -509,7 +570,9 @@ def _make_export_payload():
         "feature_stats": train_result.get("feature_stats", []),
         "feature_categories": feature_categories,
         "feature_cat_encoding": feature_cat_encoding,
+        "quality_keywords": _quality_keywords,
     }
+    print(f"[导出] payload quality_keywords: {_quality_keywords}")
 
 
 def _render_standalone_html():
@@ -1321,12 +1384,10 @@ def api_llm_enhance():
     """使用LLM增强训练数据（补全缺失的标签）"""
     try:
         file_obj = request.files.get("file")
-        if file_obj:
-            raw = file_obj.read()
-            df = pd.read_csv(io.BytesIO(raw), encoding="utf-8-sig")
-        else:
-            data_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), DATA_FILE)
-            df = pd.read_csv(data_path, encoding="utf-8-sig", low_memory=False)
+        if not file_obj:
+            return jsonify({"success": False, "error": "请上传 CSV 训练文件"}), 400
+        raw = file_obj.read()
+        df = pd.read_csv(io.BytesIO(raw), encoding="utf-8-sig")
 
         # 找出缺失标签的行
         if LABEL_COL not in df.columns:
@@ -1428,12 +1489,10 @@ def api_llm_batch_predict():
 def api_train():
     try:
         file_obj = request.files.get("file")
-        if file_obj:
-            raw = file_obj.read()
-            df = pd.read_csv(io.BytesIO(raw), encoding="utf-8-sig")
-        else:
-            data_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), DATA_FILE)
-            df = pd.read_csv(data_path, encoding="utf-8-sig", low_memory=False)
+        if not file_obj:
+            return jsonify({"success": False, "error": "请上传 CSV 训练文件"}), 400
+        raw = file_obj.read()
+        df = pd.read_csv(io.BytesIO(raw), encoding="utf-8-sig")
 
         result = train_model(df)
         global _cached_standalone_html
@@ -1553,8 +1612,7 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:
   <div class="card">
     <div class="card-title">选择训练文件</div>
     <div class="alert">
-      默认使用 <b>data/train_data.csv</b>；也可上传自定义 CSV。<br/>
-      CSV 必须包含特征列和标签列 <b>CKD包装类型</b>。
+      请上传 CSV 文件，文件必须包含以下特征列和标签列 <b>CKD包装类型</b>。
     </div>
     <input type="file" id="fileInput" accept=".csv" style="margin-bottom:16px;" />
     <div>
@@ -1642,7 +1700,6 @@ def demo_page_plus():
 
 if __name__ == "__main__":
     print(f"当前目录: {os.getcwd()}")
-    print(f"数据文件: {DATA_FILE} (存在: {os.path.exists(DATA_FILE)})")
     print(f"LLM配置: {LLM_PROVIDER} / {LLM_MODEL}")
     print(f"API地址: {LLM_BASE_URL}")
     print("训练页面: http://127.0.0.1:5001/train_llm")
