@@ -284,6 +284,12 @@ body {
   .pkg-options { grid-template-columns: 1fr; }
   .cost-summary { grid-template-columns: 1fr 1fr; }
 }
+/* 零件装载特性复选框：选中态 */
+#loadCharsCheckboxes label:has(input:checked) {
+  background: #e8f0fe;
+  border-color: #0052d9;
+  color: #0052d9;
+}
 </style>
 </head>
 <body>
@@ -336,15 +342,7 @@ body {
         </div>
         <div class="form-group">
           <label>零件装载特性</label>
-          <div class="load-chars-checkboxes" id="loadCharsCheckboxes" style="display:flex;flex-wrap:wrap;gap:8px;padding-top:4px;">
-            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" value="防冲击" onchange="onLoadCharsChange()" /> 防冲击</label>
-            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" value="防划伤" onchange="onLoadCharsChange()" /> 防划伤</label>
-            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" value="防变形" onchange="onLoadCharsChange()" /> 防变形</label>
-            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" value="防潮" onchange="onLoadCharsChange()" /> 防潮</label>
-            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" value="防静电" onchange="onLoadCharsChange()" /> 防静电</label>
-            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" value="防倒置" onchange="onLoadCharsChange()" /> 防倒置</label>
-            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" value="耐高温" onchange="onLoadCharsChange()" /> 耐高温</label>
-          </div>
+          <div id="loadCharsCheckboxes" style="display:flex;flex-wrap:wrap;gap:6px;padding-top:4px;"></div>
         </div>
         <div class="form-group">
           <label>零件数量</label>
@@ -405,10 +403,6 @@ body {
           <select id="feat_干燥剂情况"><option value="">-- 请选择 --</option></select>
         </div>
         <div class="form-group">
-          <label>零件质量要求</label>
-          <select id="feat_零件质量要求"><option value="">-- 请选择 --</option></select>
-        </div>
-        <div class="form-group">
           <label>操作人员</label>
           <input type="text" id="operator" placeholder="记录本次操作人员姓名" />
         </div>
@@ -429,6 +423,32 @@ body {
       <div id="imgPreviewWrap" style="display:none; margin-top:12px;">
         <img id="imgPreview" class="img-preview" alt="零部件图片" />
         <button type="button" class="btn btn-danger" style="margin-top:8px" onclick="removeImage()">移除图片</button>
+      </div>
+    </div>
+
+    <!-- 确认添加按钮 -->
+    <div class="batch-card" id="confirmAddCard">
+      <div class="card-title"><span class="icon">📝</span> 手动录入零件</div>
+      <div class="btn-row">
+        <button type="button" class="btn btn-success btn-lg" id="confirmAddBtn" onclick="addManualPart()">✅ 确认添加</button>
+      </div>
+    </div>
+
+    <!-- 手动录入零件列表 -->
+    <div class="batch-card" id="manualPartsCard" style="display:none;">
+      <div class="card-title"><span class="icon">📋</span> 已录入零件 <span id="manualPartsCount" style="font-size:13px;color:var(--gray-2);font-weight:normal;"></span></div>
+      <div class="alert" id="manualPartsAlert">
+        手动录入的零件信息，点击"确认添加"后将显示在下方列表中。
+      </div>
+      <div class="batch-table-wrap">
+        <table class="batch-table">
+          <thead id="manualPartsHead"></thead>
+          <tbody id="manualPartsBody"></tbody>
+        </table>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:10px;">
+        <button class="btn btn-danger" id="clearManualPartsBtn" onclick="clearManualPartsList()">🗑 清空全部</button>
+        <button class="btn btn-primary" id="toStep2Btn" onclick="goStep2FromManual()" style="display:none;">下一步：推荐包装方式 ›</button>
       </div>
     </div>
 
@@ -685,6 +705,7 @@ const state = {
   selectedContainer: '20gp',
   loadChars: [],
   imageData: null,
+  manualPartsList: [],  // 手动录入的零件列表
 };
 
 function goStep(n) {
@@ -805,7 +826,26 @@ function roundNum(num) {
 }
 
 function collectModelFeatures() {
+  // 若无 quality_keywords，从文本输入框读取并解析防XX关键词
+  var qualitySet = {};
+  var keywords = (state.model && state.model.quality_keywords) || [];
+  if (keywords.length === 0) {
+    var fallbackInput = document.getElementById('loadCharsTextFallback');
+    var text = fallbackInput ? (fallbackInput.value || '') : '';
+    _parseQualityText(text).forEach(function(kw) { qualitySet[kw] = true; });
+  }
+
   return state.featureMeta.map(meta => {
+    // 质量二元特征列：质量_防XX → 有关键词时读复选框，无关键词时用文本解析结果
+    if (meta.name.startsWith('质量_')) {
+      var kw = meta.name.slice(2);
+      if (keywords.length > 0) {
+        var chk = document.getElementById('load_char_' + kw);
+        return (chk && chk.checked) ? 1 : 0;
+      } else {
+        return qualitySet[kw] ? 1 : 0;
+      }
+    }
     // 先尝试从 feat_<name> 获取值
     let input = document.getElementById('feat_' + meta.name);
     let raw = '';
@@ -931,6 +971,37 @@ function runPrediction() {
       alert('模型尚未加载，请先在训练页面完成模型训练。');
       return;
     }
+
+    // 检查是否有手动录入的零件，如有则使用批量预测流程
+    if (state.manualPartsList && state.manualPartsList.length > 0) {
+      log('start batch prediction for manual parts');
+      var batchResults = convertManualPartsToBatchResults();
+      _batchResults = batchResults;
+      log('convertManualPartsToBatchResults done, count=' + batchResults.length);
+
+      // 更新 step2 页面显示
+      var el = document.getElementById('statClasses'); if (el) el.textContent = state.model.class_names ? state.model.class_names.length + ' 类' : '—';
+      el = document.getElementById('statFeatures'); if (el) el.textContent = state.featureMeta.length + ' 个';
+
+      document.getElementById('partInfoSummary').innerHTML = '<b>批量预测模式</b> | 共 ' + state.manualPartsList.length + ' 个零件';
+
+      // 隐藏单个零件的推荐选项，显示批量汇总表
+      var pkgOptions = document.getElementById('pkgOptions');
+      if (pkgOptions) pkgOptions.style.display = 'none';
+      var palletSec = document.getElementById('palletStackingSection');
+      if (palletSec) palletSec.style.display = 'none';
+      var section = document.getElementById('step2BatchSummary');
+      if (section) {
+        renderStep2BatchSummary();
+        section.style.display = 'block';
+      }
+
+      goStep(2);
+      log('goStep(2) done for batch');
+      return;
+    }
+
+    // 单零件预测流程（原逻辑）
     log('start');
     syncPackInputsFromModel();
     log('syncPackInputsFromModel done');
@@ -963,7 +1034,13 @@ function runPrediction() {
     log('sortPkgMethodsByConfidence done');
 
     if (!state.pkgMethods.length) {
-      alert('无法推荐包装方式，请检查输入参数是否超出包箱限制。');
+      // 提供具体的约束违反信息
+      var constraintErr = checkPkgConstraints(pack);
+      if (constraintErr) {
+        alert('无法推荐包装方式，原因如下：\n\n' + constraintErr);
+      } else {
+        alert('无法推荐包装方式，请检查输入参数是否超出包箱限制。');
+      }
       return;
     }
     // 不默认选中，等待用户选择
@@ -1024,6 +1101,284 @@ function clearModelInputs() {
     if (input) input.value = '';
   });
   var section = document.getElementById('step2BatchSummary'); if (section) section.style.display = 'none';
+}
+
+/**
+ * 检查零件参数是否满足包装约束，返回具体错误信息
+ * @returns {string|null} 错误信息，如果所有检查通过则返回null
+ */
+function checkPkgConstraints(pack) {
+  const pL = pack.l + 2 * pack.buffer + 2 * (pack.tolerance || 0);
+  const pW = pack.w + 2 * pack.buffer + 2 * (pack.tolerance || 0);
+  const pH = pack.h + 2 * pack.buffer + 2 * (pack.tolerance || 0);
+  const ctnL = pack.ctnSpec.l;
+  const ctnW = pack.ctnSpec.w;
+  const ctnH = pack.ctnSpec.h;
+  const ctnMaxWeight = pack.ctnSpec.maxWeight;
+  const maxLoad = pack.maxLoad || 0;
+  const loadChars = pack.loadChars || [];
+  const isFragile = loadChars.includes('易碎');
+
+  // 检查1：零件尺寸是否超出所有包箱规格（BOX_SPECS的最小规格是600×400×300）
+  var smallestBoxL = 600, smallestBoxW = 400, smallestBoxH = 300;
+  if (pL > smallestBoxL || pW > smallestBoxW || pH > smallestBoxH) {
+    return '零件尺寸（' + pack.l + '×' + pack.w + '×' + pack.h + ' mm，含缓冲' + pack.buffer + 'mm+公差' + (pack.tolerance||0) + 'mm）超出最小包箱规格（' + smallestBoxL + '×' + smallestBoxW + '×' + smallestBoxH + ' mm）。\n请减小零件尺寸或增加缓冲厚度。';
+  }
+
+  // 检查2：零件含缓冲尺寸是否超出集装箱内径
+  if (pL > ctnL || pW > ctnW || pH > ctnH) {
+    return '零件尺寸（' + pL + '×' + pW + '×' + pH + ' mm，含缓冲+公差）超出了集装箱内径（' + ctnL + '×' + ctnW + '×' + ctnH + ' mm）。\n请更换更大集装箱或减小零件尺寸。';
+  }
+
+  // 检查3：零件重量是否过重（单箱重量已超过集装箱最大载重）
+  // 最优情况：零件刚好放1箱，SNP=1
+  // 包箱重量 = 零件重量 + 包装材料重量（估算）
+  var approxPkgWeight = pack.weight * 1;  // SNP=1时的零件重量
+  var pkgMatWeightEst = 5;  // 估算包箱材料重量5kg
+  var singleBoxWeight = approxPkgWeight + pkgMatWeightEst;
+  if (singleBoxWeight > ctnMaxWeight) {
+    return '零件重量（' + pack.weight + ' kg）过大，超过了集装箱最大载重（' + ctnMaxWeight + ' kg）。\n请减小单件重量或拆分零件。';
+  }
+
+  // 检查4：零件最大承重限制
+  if (maxLoad > 0 && singleBoxWeight > maxLoad) {
+    return '零件单箱重量（' + singleBoxWeight.toFixed(1) + ' kg）超过了零件最大承重限制（' + maxLoad + ' kg）。\n请减小零件重量或调整最大承重参数。';
+  }
+
+  // 检查5：易碎件检查（易碎件且SNP>1时有额外约束，但SNP未知时无法精确判断）
+  // 如果零件尺寸在易碎约束的边界情况，给出提示
+  if (isFragile) {
+    // 易碎件只允许平放或侧放（Z轴），这限制了某些尺寸的零件
+    // 如果零件在某个方向上尺寸较大，可能无法找到合适的放置方式
+  }
+
+  return null;  // 所有检查通过
+}
+
+/**
+ * 确认添加按钮：验证当前输入，预测并添加到手动零件列表
+ */
+function addManualPart() {
+  if (!state.model) {
+    alert('模型尚未加载，请先在训练页面完成模型训练。');
+    return;
+  }
+  syncPackInputsFromModel();
+  const pack = getPackInput();
+  const err = validatePackInput(pack);
+  if (err) {
+    alert(err);
+    return;
+  }
+
+  // 收集模型特征并预测
+  const modelFeatures = collectModelFeatures();
+  const result = predictLGB(state.model, modelFeatures);
+
+  // 计算包装方式
+  state.predicted = result;
+  applyPredictionToModelSelect(result);
+  state.part = pack;
+  state.pkgMethods = computePkgMethods(pack);
+  sortPkgMethodsByConfidence(result);
+
+  if (!state.pkgMethods.length) {
+    // 提供具体的约束违反信息
+    var constraintErr = checkPkgConstraints(pack);
+    if (constraintErr) {
+      alert('无法推荐包装方式，原因如下：\n\n' + constraintErr);
+    } else {
+      alert('无法推荐包装方式，请检查输入参数是否超出包箱限制。');
+    }
+    return;
+  }
+
+  // 获取最优包装方案
+  const bestMethod = state.pkgMethods[0];
+  const usage = parseFloat(document.getElementById('feat_单车用量').value) || 0;
+  const batchQty = parseInt(document.getElementById('batchQty').value) || 48;
+  const totalParts = usage > 0 ? batchQty * usage : pack.qty;
+
+  // 保存当前模型特征字段的值（这些字段在确认添加后会清空）
+  var modelFeatureValues = {};
+  state.featureMeta.forEach(function(meta) {
+    var input = document.getElementById('feat_' + meta.name);
+    if (input) modelFeatureValues[meta.name] = input.value || '';
+  });
+
+  // 添加到列表
+  state.manualPartsList.push({
+    partNo: pack.partNo,
+    partName: pack.partName,
+    pack: pack,
+    features: modelFeatures,
+    prediction: result,
+    pkgMethod: bestMethod,
+    totalParts: totalParts,
+    usage: usage,
+    modelFeatureValues: modelFeatureValues,
+    pkgMethods: state.pkgMethods.slice(),  // 保存该零件的包装方案列表
+    selectedPkgMethod: bestMethod.id,      // 默认选中第一个
+  });
+
+  // 清空输入框（保留基础分类和集装箱选择）
+  document.getElementById('partNo').value = '';
+  document.getElementById('partName').value = '';
+  document.getElementById('partL').value = '';
+  document.getElementById('partW').value = '';
+  document.getElementById('partH').value = '';
+  document.getElementById('partWeight').value = '';
+  document.getElementById('partMaxLoad').value = '';
+  document.getElementById('partQty').value = '';
+  document.getElementById('bufferThickness').value = '0';
+  document.getElementById('deformationTol').value = '0';
+  document.getElementById('antiRust').value = 'no';
+  document.getElementById('remark').value = '';
+  // 清空质量特征复选框
+  document.querySelectorAll('#loadCharsCheckboxes input[type="checkbox"]').forEach(function(cb) { cb.checked = false; });
+  state.loadChars = [];
+  // 清空模型输入框
+  clearModelInputs();
+
+  // 渲染列表和包装推荐
+  renderManualPartsList();
+}
+
+/**
+ * 渲染手动录入零件列表（与批量预测结果表格式一致）
+ */
+function renderManualPartsList() {
+  var card = document.getElementById('manualPartsCard');
+  var head = document.getElementById('manualPartsHead');
+  var body = document.getElementById('manualPartsBody');
+  var countEl = document.getElementById('manualPartsCount');
+  var alertEl = document.getElementById('manualPartsAlert');
+  var toStep2Btn = document.getElementById('toStep2Btn');
+  if (!card || !head || !body) return;
+
+  var list = state.manualPartsList;
+  if (list.length === 0) {
+    card.style.display = 'none';
+    return;
+  }
+
+  card.style.display = 'block';
+  if (alertEl) alertEl.style.display = 'block';
+
+  var countText = '共 ' + list.length + ' 个零件';
+  if (countEl) countEl.textContent = countText;
+
+  // 显示"下一步"按钮
+  if (toStep2Btn) toStep2Btn.style.display = 'inline-flex';
+
+  // 与批量预测结果表(renderBatchTable)完全一致的列格式
+  // 预测类型可点击切换（点击包装推荐区的选项来改变）
+  var ths = ['#', '零件号', '零件名称', '零件尺寸(mm)', '单车用量', '零件重量(KG)', '预测类型', '置信度', '零件总量', '包装方式', '操作'];
+  head.innerHTML = '<tr>' + ths.map(function(h) { return '<th>' + escapeHtml(h) + '</th>'; }).join('') + '</tr>';
+
+  body.innerHTML = list.map(function(item, idx) {
+    var pkg = item.pkgMethod;
+    var predClass = item.prediction ? item.prediction.predicted_class : '—';
+    var confPct = item.prediction && item.prediction.confidence !== undefined
+      ? (item.prediction.confidence * 100).toFixed(2) + '%' : '—';
+    var pkgBtnText = pkg ? pkg.name : '—';
+    var pkgBtnStyle = pkg ? 'background:#0052d9;color:#fff;border-color:#0052d9;' : '';
+    // 包装方式按钮：点击弹出选择框
+    var pkgBtn = '<button class="btn" style="height:26px;padding:0 10px;font-size:12px;cursor:pointer;' + pkgBtnStyle + '" onclick="openManualPartPkgModal(' + idx + ')">' + escapeHtml(pkgBtnText) + '</button>';
+    return '<tr>' +
+      '<td style="text-align:center;">' + (idx + 1) + '</td>' +
+      '<td>' + escapeHtml(String(item.partNo)) + '</td>' +
+      '<td>' + escapeHtml(String(item.partName)) + '</td>' +
+      '<td>' + item.pack.l + '×' + item.pack.w + '×' + item.pack.h + '</td>' +
+      '<td>' + (isNaN(item.usage) ? '—' : item.usage) + '</td>' +
+      '<td>' + (item.pack.weight || '—') + '</td>' +
+      '<td style="font-weight:600;color:var(--primary);">' + escapeHtml(predClass) + '</td>' +
+      '<td>' + confPct + '</td>' +
+      '<td>' + (item.totalParts !== null && item.totalParts !== undefined ? item.totalParts.toFixed(0) : '—') + '</td>' +
+      '<td>' + pkgBtn + '</td>' +
+      '<td><button class="btn btn-danger" style="height:26px;padding:0 10px;font-size:12px;" onclick="deleteManualPart(' + idx + ')">删除</button></td>' +
+    '</tr>';
+  }).join('');
+}
+
+/**
+ * 从手动录入进入Step 2
+ */
+function goStep2FromManual() {
+  if (state.manualPartsList.length === 0) {
+    alert('请先添加零件');
+    return;
+  }
+  runPrediction();
+}
+
+/**
+ * 删除手动录入的零件
+ */
+function deleteManualPart(idx) {
+  if (idx >= 0 && idx < state.manualPartsList.length) {
+    state.manualPartsList.splice(idx, 1);
+    renderManualPartsList();
+  }
+}
+
+/**
+ * 清空手动录入零件列表
+ */
+function clearManualPartsList() {
+  state.manualPartsList = [];
+  renderManualPartsList();
+}
+
+/**
+ * 将模型预测结果应用到包装参数选择（用于模型选择显示）
+ */
+function applyPredictionToModelSelect(result) {
+  // 更新模型预测的分类选择显示（如果有对应select的话）
+}
+
+/**
+ * 手动零件列表转换为批量预测结果格式
+ */
+function convertManualPartsToBatchResults() {
+  var results = [];
+  state.manualPartsList.forEach(function(item, idx) {
+    var pack = item.pack;
+    var usage = item.usage || 0;
+    var batchQty = pack.batchQty || 48;
+    var totalParts = usage > 0 ? batchQty * usage : pack.qty;
+    var pkg = item.pkgMethod;
+    var mfVals = item.modelFeatureValues || {};
+    // 转换为batch格式（l, w, h 而不是 pkgL, pkgW, pkgH）
+    var batchPkg = pkg ? {
+      l: pkg.pkgL,
+      w: pkg.pkgW,
+      h: pkg.pkgH,
+      snp: pkg.snp,
+      boxesNeeded: pkg.boxesPerCtn,
+      fillRate: pkg.fillRate,
+      name: pkg.name,
+      material: pkg.material,
+    } : null;
+    results.push({
+      rowIndex: idx + 1,
+      rawFeatures: {
+        '零件号': pack.partNo,
+        '零件名称': pack.partName,
+        '零件重量（KG）': pack.weight || 0,
+        '零件分类': pack.category,
+        '包装等级分类': mfVals['包装等级分类'] || '',
+        '零件种类': mfVals['零件种类'] || '',
+        '包装袋情况': mfVals['包装袋情况'] || '',
+        '干燥剂情况': mfVals['干燥剂情况'] || '',
+        '单车用量': usage,
+      },
+      totalParts: totalParts,
+      pkgMethod: batchPkg,
+      error: null,
+    });
+  });
+  return results;
 }
 
 function computePkgMethods(part) {
@@ -1518,6 +1873,45 @@ function initFeatureSelect(id, featureName) {
   });
 }
 
+/**
+ * 初始化零件装载特性复选框（与批量预测模型特征一致）
+ * 选项来自 model.quality_keywords，动态生成，ID 格式为 load_char_防XX
+ * 若 model 无 quality_keywords（旧模型），降级为文本输入框作为兜底
+ */
+function initLoadCharsCheckboxes() {
+  var container = document.getElementById('loadCharsCheckboxes');
+  if (!container) return;
+  var keywords = (state.model && state.model.quality_keywords) || [];
+  container.innerHTML = '';
+  if (keywords.length === 0) {
+    // 降级：文本输入框（粘贴原始质量要求文本，用于解析防XX关键词）
+    var hint = document.createElement('span');
+    hint.style.cssText = 'font-size:12px;color:#e37318;margin-right:8px;';
+    hint.textContent = '（请重新训练模型）';
+    container.appendChild(hint);
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.id = 'loadCharsTextFallback';
+    input.placeholder = '粘贴零件质量要求文本，系统自动解析防XX关键词';
+    input.style.cssText = 'border:1px solid #c0c6d1;border-radius:4px;padding:2px 8px;font-size:13px;width:320px;';
+    container.appendChild(input);
+    return;
+  }
+  keywords.forEach(function(kw) {
+    var label = document.createElement('label');
+    label.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border:1px solid #c0c6d1;border-radius:12px;cursor:pointer;font-size:13px;user-select:none;white-space:nowrap;';
+    var checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = 'load_char_' + kw;
+    checkbox.value = kw;
+    checkbox.style.margin = '0';
+    checkbox.addEventListener('change', onLoadCharsChange);
+    label.appendChild(checkbox);
+    label.appendChild(document.createTextNode(kw));
+    container.appendChild(label);
+  });
+}
+
 function init() {
   state.model = window.LGB_MODEL || null;
   if (!state.model) {
@@ -1537,7 +1931,7 @@ function init() {
   document.getElementById('partInfoSummary').textContent = '请先完成模型输入并点击预测。';
   initFeatureSelect('feat_包装袋情况', '包装袋情况');
   initFeatureSelect('feat_干燥剂情况', '干燥剂情况');
-  initFeatureSelect('feat_零件质量要求', '零件质量要求');
+  initLoadCharsCheckboxes();
   initFeatureSelect('feat_零件种类', '零件种类');
   initFeatureSelect('feat_包装等级分类', '包装等级分类');
   initImageUpload();
@@ -1595,12 +1989,30 @@ function handleBatchCsv(file) {
   reader.readAsText(file);
 }
 
+/**
+ * 解析"零件质量要求"文本，返回其中出现的所有"防XX"关键词集合
+ */
+function _parseQualityText(text) {
+  if (!text || typeof text !== 'string') return [];
+  var matches = text.match(/防[\u4e00-\u9fa5a-zA-Z0-9]+/g) || [];
+  return matches;
+}
+
 function _buildFeaturesFromRow(rowObj) {
   var model = state.model;
   if (!model || !model.feature_names) return [];
   var names = model.feature_names;
   var catEnc = model.feature_cat_encoding || {};
+  var rawQualityText = rowObj['零件质量要求'] || '';
+  var qualitySet = {};
+  _parseQualityText(rawQualityText).forEach(function(kw) { qualitySet[kw] = true; });
+
   return names.map(function(name) {
+    // 质量二元特征列：质量_防XX
+    if (name.startsWith('质量_')) {
+      var kw = name.slice(2);  // 去掉前缀"质量_"
+      return qualitySet[kw] ? 1 : 0;
+    }
     // Find value from CSV row (try exact match first)
     var v = rowObj[name];
     if (v === undefined || v === null || v === '') return NaN;
@@ -1827,6 +2239,7 @@ function updatePredClass(resultIdx, newClass) {
 }
 
 var _pkgModalResultIdx = null;
+var _pkgModalManualPartIdx = null;  // 手动录入零件的索引，null表示当前是批量结果模式
 var _pkgModalOptions = null;
 var _pkgSelectedMethod = null;
 var _pkgModalMaterial = 'carton';
@@ -1919,6 +2332,93 @@ function openPkgMethodModal(resultIdx) {
   setTimeout(redrawPkgPreviewInModal, 50);
 }
 
+/**
+ * 打开手动录入零件的包装方式选择弹窗
+ */
+function openManualPartPkgModal(partIdx) {
+  _pkgModalResultIdx = null;
+  _pkgModalManualPartIdx = partIdx;
+  var item = state.manualPartsList[partIdx];
+  if (!item) return;
+  var pack = item.pack;
+  var predClass = item.prediction ? item.prediction.predicted_class : '';
+  var material = 'carton';
+  if (predClass.includes('木箱')) material = 'wood';
+  else if (predClass.includes('铁') || predClass.includes('铁架') || predClass.includes('轻钢')) material = 'iron';
+  else if (predClass.includes('天地盖')) material = 'tdg';
+  else if (predClass === 'STD') material = 'STD';
+  else if (predClass.includes('纸箱')) material = 'carton';
+
+  _pkgModalMaterial = material;
+  var matSelect = document.getElementById('pkgModalMaterial');
+  if (matSelect) matSelect.value = material;
+
+  var partL = pack.l || 100;
+  var partW = pack.w || 100;
+  var partH = pack.h || 100;
+  var partWeight = pack.weight || 1;
+  var totalParts = item.totalParts || 1;
+  var ctnSpec = pack.ctnSpec || CONTAINER_SPECS[state.selectedContainer] || CONTAINER_SPECS['20gp'];
+  var matInfo = MATERIAL_PRICES[material];
+
+  var sizes = MODAL_BOX_SIZES[material] || [];
+  var options = sizes.map(function(s) {
+    var pL = partL, pW = partW, pH = partH;
+    var orientations = [
+      { d: [pL, pW, pH] },
+      { d: [pW, pL, pH] },
+      { d: [pH, pW, pL] },
+      { d: [pH, pL, pW] },
+      { d: [pL, pH, pW] },
+      { d: [pW, pH, pL] },
+    ];
+    var viable = orientations.filter(function(o) { return o.d[0] <= s.l && o.d[1] <= s.w && o.d[2] <= s.h; });
+    if (!viable.length) return null;
+    var best = viable[0];
+    var bestSnp = 0;
+    viable.forEach(function(o) {
+      var snp = Math.max(1, Math.floor(s.l / o.d[0])) * Math.max(1, Math.floor(s.w / o.d[1])) * Math.max(1, Math.floor(s.h / o.d[2]));
+      if (snp > bestSnp) { bestSnp = snp; best = o; }
+    });
+    var boxesNeeded = Math.ceil(totalParts / bestSnp);
+    var partVol = pL * pW * pH;
+    var boxVol = s.l * s.w * s.h;
+    var fillRate = (bestSnp * partVol) / boxVol;
+    var orderFillRate = (totalParts * partVol) / (boxesNeeded * boxVol);
+    return {
+      l: s.l, w: s.w, h: s.h,
+      snp: bestSnp,
+      orientation: '平放',
+      boxesNeeded: boxesNeeded,
+      fillRate: fillRate,
+      orderFillRate: orderFillRate,
+      name: matInfo.name + ' ' + s.l + '×' + s.w + '×' + s.h,
+      material: material
+    };
+  }).filter(function(o) { return o !== null; });
+
+  options.sort(function(a, b) {
+    if (a.boxesNeeded !== b.boxesNeeded) return a.boxesNeeded - b.boxesNeeded;
+    return b.orderFillRate - a.orderFillRate;
+  });
+
+  _pkgModalOptions = options;
+  // 如果已有选中的方案，保持选中状态
+  _pkgSelectedMethod = item.pkgMethod && item.pkgMethod.pkgL
+    ? { l: item.pkgMethod.pkgL, w: item.pkgMethod.pkgW, h: item.pkgMethod.pkgH, snp: item.pkgMethod.snp, boxesNeeded: item.pkgMethod.boxesPerCtn, fillRate: item.pkgMethod.fillRate, orderFillRate: item.pkgMethod.fillRate, name: item.pkgMethod.name, material: item.pkgMethod.material }
+    : (options.length > 0 ? options[0] : null);
+
+  document.getElementById('pkgModalTitle').textContent = '选择包装方式 - ' + matInfo.name;
+  document.getElementById('pkgModalHeader').innerHTML =
+    '<b>' + escapeHtml(pack.partNo || '') + '</b> ' + escapeHtml(pack.partName || '') +
+    ' | 零件尺寸: ' + partL + '×' + partW + '×' + partH + ' mm | 重量: ' + partWeight + ' kg' +
+    ' | 零件总量: ' + totalParts + ' 件 | 集装箱: ' + (ctnSpec.label || '');
+
+  renderPkgModalGrid(options);
+  document.getElementById('pkgModalOverlay').classList.remove('hidden');
+  setTimeout(redrawPkgPreviewInModal, 50);
+}
+
 function renderPkgModalGrid(options) {
   var grid = document.getElementById('pkgModalGrid');
   if (!options || options.length === 0) {
@@ -1945,9 +2445,33 @@ function selectPkgModalCard(el, idx) {
 }
 
 function confirmPkgSelection() {
-  if (_pkgModalResultIdx !== null && _pkgSelectedMethod) {
-    _batchResults[_pkgModalResultIdx].pkgMethod = _pkgSelectedMethod;
-    renderBatchTable(_batchResults, _batchCsvData.header);
+  if (_pkgSelectedMethod) {
+    if (_pkgModalManualPartIdx !== null) {
+      // 手动录入零件模式：更新该零件的pkgMethod
+      var item = state.manualPartsList[_pkgModalManualPartIdx];
+      if (item && item.pkgMethods) {
+        // 在pkgMethods中找到匹配的方案并更新
+        var matchedMethod = item.pkgMethods.find(function(m) {
+          return m.pkgL === _pkgSelectedMethod.l && m.pkgW === _pkgSelectedMethod.w && m.pkgH === _pkgSelectedMethod.h;
+        });
+        state.manualPartsList[_pkgModalManualPartIdx].pkgMethod = matchedMethod || {
+          pkgL: _pkgSelectedMethod.l,
+          pkgW: _pkgSelectedMethod.w,
+          pkgH: _pkgSelectedMethod.h,
+          snp: _pkgSelectedMethod.snp,
+          boxesPerCtn: _pkgSelectedMethod.boxesNeeded,
+          fillRate: _pkgSelectedMethod.fillRate,
+          name: _pkgSelectedMethod.name,
+          material: _pkgSelectedMethod.material,
+        };
+        state.manualPartsList[_pkgModalManualPartIdx].selectedPkgMethod = matchedMethod ? matchedMethod.id : null;
+        renderManualPartsList();
+      }
+    } else if (_pkgModalResultIdx !== null) {
+      // 批量预测模式：更新批量结果
+      _batchResults[_pkgModalResultIdx].pkgMethod = _pkgSelectedMethod;
+      renderBatchTable(_batchResults, _batchCsvData.header);
+    }
   }
   closePkgModal();
 }
@@ -1955,6 +2479,7 @@ function confirmPkgSelection() {
 function closePkgModal() {
   document.getElementById('pkgModalOverlay').classList.add('hidden');
   _pkgModalResultIdx = null;
+  _pkgModalManualPartIdx = null;
   _pkgModalOptions = null;
   _pkgSelectedMethod = null;
   _pkgModalMaterial = 'carton';
