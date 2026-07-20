@@ -7,16 +7,14 @@ This file provides guidance to Voyah Code (claude.ai/code) when working with cod
 **零部件包装测算系统** — A single-page web application for calculating optimal packaging solutions for parts/components. The system guides users through a 4-step workflow: input part parameters → recommend packaging method → confirm scheme → calculate costs.
 
 - **Technology**: Pure HTML/CSS/JavaScript (no build step, no framework)
-- **Entry point**: `index.html` — open directly in a browser
-- **State**: Global JavaScript `state` object, persisted to `localStorage` under key `pkg_projects`
+- **Entry point**: `step1.html` — served by `api_server.py`
+- **State**: Global JavaScript `state` object, persisted to `localStorage` under key `pkg_state_v1`; 3-page flow: step1.html → step2.html → step3.html
 - **main.py**: Non-functional placeholder from JetBrains template — ignore it
 
 ## Running
 
-- **train_server.py** (Flask 后端): Start with `python train_server.py`, serves LightGBM_damo.html with training API and model export
-- **LightGBM_damo.html**: Works in two modes:
-  - 联网模式：训练完成后可下载独立版 HTML（含内嵌模型 JSON）
-  - 离线模式：独立版打开即用，纯 JS 预测引擎不依赖网络
+- **api_server.py** (Flask 后端): Start with `python api_server.py`, serves step1/2/3.html and exposes `/api/*` endpoints
+- **step1.html → step2.html → step3.html**: Multi-page flow; state persisted via localStorage; model loaded asynchronously via `/api/model`
 
 ### LightGBM 离线预测
 
@@ -25,13 +23,13 @@ train_server.py exports model via `/api/model` (JSON with tree structure) and `/
 ## Code Architecture
 
 ### State Management
-All application state lives in a global `state` object (line ~1044):
+All application state lives in a global `state` object defined in `js/common.js` and persisted to `localStorage` under key `pkg_state_v1`:
 ```js
 const state = {
-  step, imageData, selectedContainer, selectedPkgMethod,
-  pkgMethods, scheme, cost, loadedParts, layoutPart, layoutMethod,
-  layoutAlpha, layoutBeta, previewAlpha, previewBeta,
-  currentPart
+  model, featureMeta, featureNodes, part, pkgMethods,
+  selectedPkgMethod, scheme, predicted, selectedContainer,
+  loadChars, imageData, manualPartsList,
+  _batchCsvData, _batchResults,
 };
 ```
 

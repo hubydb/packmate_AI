@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>模型训练（LLM增强版）</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#1c2435;background:#f3f5f7;line-height:1.6;min-height:100vh}
+.header{background:#fff;border-bottom:1px solid #e8ecf0;padding:16px 32px}
+.header h1{font-size:18px;font-weight:600;color:#0052d9}
+.main{max-width:800px;margin:24px auto;padding:0 24px}
+.card{background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08);padding:24px 28px;margin-bottom:20px}
+.card-title{font-size:16px;font-weight:600;margin-bottom:16px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 20px;height:36px;border:1px solid #c0c6d1;border-radius:4px;font-size:14px;cursor:pointer;background:#fff;color:#1c2435;text-decoration:none}
+.btn-primary{background:#0052d9;color:#fff;border-color:#0052d9}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.alert{padding:12px 16px;border-radius:6px;font-size:13px;margin-bottom:16px;background:#e8f0fe;color:#0052d9}
+.alert-error{background:#fef0ef;color:#d54941}
+.alert-success{background:#e8f8ef;color:#2ba471}
+</style>
+</head>
+<body>
+<header class="header"><h1>LightGBM 模型训练（LLM增强版）</h1></header>
+<div class="main">
+  <div class="card">
+    <div class="card-title">LLM 状态</div>
+    <div id="llmStatus">检查中...</div>
+  </div>
+  <div class="card">
+    <div class="card-title">选择训练文件</div>
+    <div class="alert">
+      请上传 CSV 文件，文件必须包含以下特征列和标签列 <b>CKD包装类型</b>。
+    </div>
+    <input type="file" id="fileInput" accept=".csv" style="margin-bottom:16px;" />
+    <div>
+      <button class="btn btn-primary" id="trainBtn" onclick="startTrain()">开始训练</button>
+      <a class="btn" id="predictLink" href="/step1.html" style="display:none;margin-left:10px;">打开预测工具</a>
+    </div>
+    <div id="resultArea"></div>
+  </div>
+</div>
+<script>
+async function checkLlMStatus() {
+  try {
+    const resp = await fetch('/api/llm_status');
+    const data = await resp.json();
+    if (data.success) {
+      const s = data.data;
+      document.getElementById('llmStatus').innerHTML = '<div class="alert alert-success">当前LLM: ' + s.provider + ' | 模型: ' + s.model + ' | 连接状态: ' + s.connection + '</div>';
+    }
+  } catch(e) {
+    document.getElementById('llmStatus').innerHTML = '<div class="alert alert-error">LLM状态检查失败: ' + e.message + '</div>';
+  }
+}
+async function startTrain() {
+  const file = document.getElementById('fileInput').files[0];
+  const form = new FormData();
+  if (file) form.append('file', file);
+  document.getElementById('trainBtn').disabled = true;
+  try {
+    const resp = await fetch('/api/train', {method:'POST', body:form});
+    const data = await resp.json();
+    if (!data.success) {
+      document.getElementById('resultArea').innerHTML = '<div class="alert alert-error">训练失败: ' + data.error + '</div>';
+      document.getElementById('trainBtn').disabled = false;
+      return;
+    }
+    const r = data.data;
+    document.getElementById('resultArea').innerHTML = '<div class="alert alert-success">训练完成！准确率: ' + r.accuracy_pct + '</div>';
+    document.getElementById('predictLink').style.display = 'inline-flex';
+  } catch(e) {
+    document.getElementById('resultArea').innerHTML = '<div class="alert alert-error">请求失败: ' + e.message + '</div>';
+    document.getElementById('trainBtn').disabled = false;
+  }
+}
+checkLlMStatus();
+</script>
+</body>
+</html>

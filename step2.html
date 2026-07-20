@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>零件包装方案推荐 - 推荐包装方式</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --primary: #0052d9;
+  --primary-light: #e8f0fe;
+  --success: #2ba471;
+  --warning: #e37318;
+  --danger: #d54941;
+  --gray-1: #1c2435;
+  --gray-2: #4f5d73;
+  --gray-3: #8a94a6;
+  --gray-4: #c0c6d1;
+  --gray-5: #e8ecf0;
+  --gray-6: #f3f5f7;
+  --radius: 8px;
+  --shadow: 0 2px 8px rgba(0,0,0,.08);
+}
+body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; color: var(--gray-1); background: var(--gray-6); line-height: 1.6; min-height: 100vh; }
+.header { background: #fff; border-bottom: 1px solid var(--gray-5); padding: 16px 32px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.header h1 { font-size: 18px; font-weight: 600; color: var(--primary); }
+.header .badge { padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 500; background: var(--primary-light); color: var(--primary); }
+.main { max-width: 1220px; margin: 24px auto; padding: 0 24px; }
+.card { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 24px 28px; margin-bottom: 20px; }
+.card-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 20px; height: 36px; border: 1px solid var(--gray-4); border-radius: 4px; font-size: 14px; cursor: pointer; transition: all .2s; background: #fff; color: var(--gray-1); text-decoration: none; }
+.btn:hover { border-color: var(--gray-3); }
+.btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+.btn-primary:hover { background: #0041b3; }
+.btn-lg { height: 42px; padding: 0 32px; font-size: 15px; }
+.btn-group { display: flex; gap: 12px; margin-top: 20px; flex-wrap: wrap; }
+.steps { display: flex; gap: 0; background: #fff; padding: 16px 32px; border-bottom: 1px solid var(--gray-5); }
+.step-item { display: flex; align-items: center; gap: 8px; padding: 8px 20px; border-radius: var(--radius); font-size: 14px; color: var(--gray-3); text-decoration: none; }
+.step-item.active { background: var(--primary-light); color: var(--primary); font-weight: 600; }
+.step-item .step-num { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; background: var(--gray-5); color: var(--gray-3); flex-shrink: 0; }
+.step-item.active .step-num { background: var(--primary); color: #fff; }
+.step-arrow { width: 16px; text-align: center; color: var(--gray-4); font-size: 12px; flex-shrink: 0; }
+.alert { padding: 12px 16px; border-radius: var(--radius); font-size: 13px; margin-bottom: 16px; display: flex; align-items: flex-start; gap: 8px; }
+.alert-info { background: var(--primary-light); color: var(--primary); }
+.alert-success { background: #e8f8ef; color: var(--success); }
+.alert-warning { background: #fef3e8; color: var(--warning); }
+.pkg-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; margin-top: 12px; }
+.pkg-option { border: 2px solid var(--gray-5); border-radius: var(--radius); padding: 16px; cursor: pointer; position: relative; }
+.pkg-option.selected { border-color: var(--primary); background: var(--primary-light); }
+.pkg-option .check-mark { position: absolute; top: 10px; right: 10px; width: 22px; height: 22px; border-radius: 50%; background: var(--primary); color: #fff; display: none; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
+.pkg-option.selected .check-mark { display: flex; }
+.pkg-option .opt-title { font-weight: 600; font-size: 15px; margin-bottom: 8px; }
+.pkg-option .opt-desc { font-size: 13px; color: var(--gray-2); line-height: 1.8; }
+.batch-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.batch-table th, .batch-table td { padding: 7px 12px; border-bottom: 1px solid #e8ecf0; text-align: left; white-space: nowrap; }
+.batch-table th { background: #f3f5f7; font-weight: 600; color: var(--gray-2); font-size: 12px; position: sticky; top: 0; z-index: 1; }
+.batch-table tr:hover td { background: #f8f9fb; }
+.batch-table-wrap { overflow-x: auto; max-height: 420px; overflow-y: auto; border: 1px solid var(--gray-5); border-radius: 4px; }
+.pkg-modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+.pkg-modal-overlay.hidden { display: none; }
+.pkg-modal { background: #fff; border-radius: 8px; width: 90%; max-width: 900px; max-height: 90vh; display: flex; flex-direction: column; }
+.pkg-modal-header { padding: 16px 20px; border-bottom: 1px solid #e8ecf0; display: flex; align-items: center; justify-content: space-between; }
+.pkg-modal-header h3 { font-size: 16px; font-weight: 600; color: #1c2435; }
+.pkg-modal-close { background: none; border: none; font-size: 24px; cursor: pointer; color: #8f9eb3; line-height: 1; }
+.pkg-modal-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
+.pkg-modal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.pkg-modal-card { border: 2px solid #e8ecf0; border-radius: 6px; padding: 12px; cursor: pointer; transition: all .2s; }
+.pkg-modal-card:hover { border-color: #0052d9; }
+.pkg-modal-card.selected { border-color: #0052d9; background: #e8f0fe; }
+.pkg-modal-card .card-size { font-size: 14px; font-weight: 600; color: #1c2435; margin-bottom: 4px; }
+.pkg-modal-card .card-mat { font-size: 12px; color: #8f9eb3; line-height: 1.6; }
+.pkg-modal-card .check-mark { float: right; color: #0052d9; font-weight: 700; display: none; }
+.pkg-modal-card.selected .check-mark { display: inline; }
+.pkg-modal-footer { padding: 12px 20px; border-top: 1px solid #e8ecf0; display: flex; justify-content: flex-end; gap: 8px; }
+.layout-diagram { background: var(--gray-6); border-radius: var(--radius); padding: 16px; margin-top: 16px; min-height: 240px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.layout-diagram canvas { border: 1px solid var(--gray-4); border-radius: 4px; background: #fff; }
+@media (max-width: 768px) {
+  .main { padding: 0 12px; }
+  .steps { padding: 12px 16px; overflow-x: auto; }
+  .step-item { padding: 6px 12px; font-size: 13px; white-space: nowrap; }
+  .pkg-options { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<header class="header">
+  <h1>零件包装方案推荐</h1>
+  <span class="badge" id="statusBadge">等待输入</span>
+</header>
+<nav class="steps">
+  <a href="/step1.html" class="step-item"><span class="step-num">1</span><span>输入零件参数</span></a>
+  <span class="step-arrow">›</span>
+  <a href="/step2.html" class="step-item active"><span class="step-num">2</span><span>推荐包装方式</span></a>
+  <span class="step-arrow">›</span>
+  <a href="/step3.html" class="step-item"><span class="step-num">3</span><span>包装成本测算</span></a>
+</nav>
+<main class="main">
+  <div class="card">
+    <div class="card-title"><span class="icon">🧠</span> AI 推荐包装方式</div>
+    <div class="alert alert-info">基于零部件参数及集装箱规格，系统推荐以下包装方式，请确认后进入下一步。</div>
+    <div id="partInfoSummary" style="margin-bottom:16px; font-size:13px; color:var(--gray-2);">请先完成模型输入并点击预测。</div>
+    <div class="pkg-options" id="pkgOptions"></div>
+    <div id="palletStackingSection" style="display:none;margin-top:16px;">
+      <div class="card-title" style="font-size:14px;"><span class="icon">📦</span> 纸箱托盘码放方案（148A 托盘）</div>
+      <div id="palletStackingList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;margin-top:10px;"></div>
+    </div>
+    <div id="step2BatchSummary" style="display:none;margin-top:16px;">
+      <div class="card-title" style="font-size:14px;"><span class="icon">📋</span> 预测包装方案汇总</div>
+      <div class="batch-table-wrap">
+        <table class="batch-table"><thead id="step2BatchSummaryHead"></thead><tbody id="step2BatchSummaryBody"></tbody></table>
+      </div>
+      <div id="palletDiagramsContainer"></div>
+    </div>
+  </div>
+
+  <div class="btn-group">
+    <a href="/step1.html" class="btn">‹ 返回修改</a>
+    <button type="button" class="btn" onclick="exportStep2Results()">💾 导出预测方案汇总 CSV</button>
+    <button type="button" class="btn btn-primary btn-lg" onclick="goStep3()">确认包装方式，生成方案 ›</button>
+  </div>
+</main>
+
+<script src="/js/common.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/pack.js"></script>
+<script src="/js/step2.js"></script>
+<script src="/js/modal.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', async function() {
+  await loadModelFromApi();
+  initStep2();
+});
+</script>
+</body>
+</html>
